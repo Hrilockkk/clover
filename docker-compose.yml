@@ -1,0 +1,18 @@
+services:
+  clover:
+    build: .
+    container_name: clover
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      # Первый админ — применяется один раз, на пустой базе.
+      # Меняется здесь или в .env рядом с compose-файлом.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+    volumes:
+      - clover-data:/app/data
+
+volumes:
+  clover-data:

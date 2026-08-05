@@ -1,0 +1,12 @@
+node_modules
+data
+.git
+.env
+*.log
+.playwright-mcp
+ish
+README.md
+CLOVER.md
+docker-compose.yml
+Dockerfile
+.dockerignore

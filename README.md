@@ -12,6 +12,80 @@ npm start
 
 Открыть: **http://localhost:3000**
 
+## Деплой на свой сервер
+
+### Вариант 1: Docker (рекомендуется) — одна команда
+
+```bash
+# 1. Склонировать (репо приватный — подставь токен github.com/settings/tokens)
+git clone https://<ТОКЕН>@github.com/Hrilockkk/clover.git
+cd clover
+
+# 2. Пароль первого админа (опционально, по умолчанию admin/admin)
+echo "ADMIN_PASSWORD=$(openssl rand -hex 8)" > .env
+
+# 3. Поднять
+docker compose up -d --build
+```
+
+Готово: сервис на порту **3000**, база — в named volume `clover-data`
+(переживает пересборку и обновления). Логи: `docker compose logs -f`.
+Обновление: `git pull && docker compose up -d --build`.
+
+### Вариант 2: Без Docker (bare metal, Ubuntu/Debian)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs git
+git clone https://<ТОКЕН>@github.com/Hrilockkk/clover.git /opt/clover
+cd /opt/clover && npm ci --omit=dev
+cp .env.example .env && nano .env   # сменить ADMIN_PASSWORD
+npm start                           # или systemd ниже
+```
+
+Автозапуск через systemd (`/etc/systemd/system/clover.service`):
+
+```ini
+[Unit]
+Description=Clover Scan
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/clover
+ExecStart=/usr/bin/node server.js
+Restart=always
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now clover
+```
+
+### За Nginx (домен + HTTPS)
+
+```nginx
+server {
+    listen 80;
+    server_name scan.example.com;
+    client_max_body_size 2m;          # upload скана до 1 МБ, с запасом
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+```
+
+`X-Forwarded-*` обязательны: из них строится `uploadUrl`, на который сканер
+шлёт результат. HTTPS повесь через `certbot --nginx` — если панель открыта по
+https, сканер тоже будет слать по https.
+
 | Страница | URL | Доступ |
 |---|---|---|
 | Лендинг | `/` | публичная |
