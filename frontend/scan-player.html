@@ -9,20 +9,27 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #09090b; color: #e4e4e7; }
-        .glass-panel { background: rgba(22,22,26,0.9); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: 16px; cursor: pointer; border: none; transition: all 0.15s; }
-        .btn-primary { background: #6366f1; color: white; }
-        .btn-primary:hover { background: #4f46e5; }
+        body { font-family: 'Inter', sans-serif; color: #e7f8ef; background: #04110b;
+            background-image:
+                radial-gradient(ellipse 80% 60% at 70% -10%, rgba(52,211,153,0.16), transparent 60%),
+                radial-gradient(ellipse 60% 50% at 10% 110%, rgba(163,230,53,0.08), transparent 60%);
+            background-attachment: fixed; }
+        .clover-field {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='10' y='30' font-size='26' fill='rgba(110,231,183,0.05)'%3E%E2%98%98%3C/text%3E%3Ctext x='70' y='90' font-size='20' fill='rgba(163,230,53,0.04)'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
+        }
+        .glass-panel { background: linear-gradient(160deg, rgba(52,211,153,0.10), rgba(52,211,153,0.03)); border: 1px solid rgba(110,231,183,0.22); backdrop-filter: blur(14px); box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 14px; font-weight: 700; font-size: 16px; cursor: pointer; border: none; transition: all 0.15s; }
+        .btn-primary { background: linear-gradient(135deg, #34d399, #a3e635); color: #05240f; }
+        .btn-primary:hover { filter: brightness(1.1); }
         .mono { font-family: 'Cascadia Code', 'Consolas', monospace; }
     </style>
 </head>
-<body>
+<body class="clover-field">
     <div class="min-h-screen flex items-center justify-center p-6">
         <div class="glass-panel rounded-2xl p-8 max-w-lg w-full" id="content">
             <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-500/20 mb-4">
-                    <i class="ph ph-shield-star text-3xl text-indigo-400"></i>
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 mb-4">
+                    <i class="ph ph-clover text-3xl text-emerald-300"></i>
                 </div>
                 <h1 class="text-2xl font-bold text-white">Clover Scan</h1>
             </div>
@@ -36,13 +43,13 @@
             const status = document.getElementById('manualStatus');
             if (!dz) return;
             ['dragenter','dragover','dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
-            ['dragenter','dragover'].forEach(e => dz.addEventListener(e, () => dz.classList.add('border-indigo-500','text-indigo-400')));
-            ['dragleave','drop'].forEach(e => dz.addEventListener(e, () => dz.classList.remove('border-indigo-500','text-indigo-400')));
+            ['dragenter','dragover'].forEach(e => dz.addEventListener(e, () => dz.classList.add('border-emerald-400','text-emerald-300')));
+            ['dragleave','drop'].forEach(e => dz.addEventListener(e, () => dz.classList.remove('border-emerald-400','text-emerald-300')));
             dz.addEventListener('drop', async (ev) => {
                 const file = ev.dataTransfer.files[0];
                 if (!file) return;
                 if (!file.name.endsWith('.enc')) { status.textContent = 'Нужен файл .enc'; status.className = 'text-xs mt-2 text-center text-rose-400'; return; }
-                status.textContent = 'Загрузка...'; status.className = 'text-xs mt-2 text-center text-indigo-300';
+                status.textContent = 'Загрузка...'; status.className = 'text-xs mt-2 text-center text-emerald-300';
                 try {
                     const text = await file.text();
                     const res = await fetch('/api/scans/upload-manual/' + id, {
@@ -101,8 +108,8 @@
                 </div>
                 <div class="glass-panel rounded-xl p-4">
                     <p class="text-white font-semibold mb-2">Если автоматическая отправка не сработала</p>
-                    <p class="text-gray-400 text-sm mb-3">Перетащите сюда файл <span class="mono text-indigo-300">scan_*.enc</span>, который создал Clover рядом с собой.</p>
-                    <div id="dropzone" class="border-2 border-dashed border-white/20 rounded-xl p-6 text-center text-gray-500 text-sm hover:border-indigo-500 hover:text-indigo-400 transition-colors cursor-pointer">
+                    <p class="text-gray-400 text-sm mb-3">Перетащите сюда файл <span class="mono text-emerald-300">scan_*.enc</span>, который создал Clover рядом с собой.</p>
+                    <div id="dropzone" class="border-2 border-dashed border-emerald-300/25 rounded-xl p-6 text-center text-gray-500 text-sm hover:border-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer">
                         <i class="ph ph-upload-simple text-2xl mb-2 block"></i>
                         Перетащите .enc файл сюда
                     </div>
