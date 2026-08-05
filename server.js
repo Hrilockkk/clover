@@ -14,6 +14,18 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+// Подхват .env из корня проекта (без внешних зависимостей).
+// Переменные из реального окружения имеют приоритет.
+try {
+    const envFile = path.join(__dirname, '.env');
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+        const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+        if (!m) continue;
+        const val = m[2].replace(/^["']|["']$/g, '');
+        if (process.env[m[1]] === undefined) process.env[m[1]] = val;
+    }
+} catch (_) { /* .env необязателен */ }
+
 const db = require('./backend/database');
 const scans = require('./backend/scans');
 const createScansHandler = require('./backend/scans.routes');
