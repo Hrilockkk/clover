@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Сканы - Fear Project</title>
+    <script>
+        (function () {
+            try {
+                var raw = localStorage.getItem('localUiSettings');
+                if (!raw) return;
+                var s = JSON.parse(raw);
+                var t = s && s.theme;
+                if (!t || t === 'dark') return;
+                document.documentElement.classList.add('theme-' + t);
+            } catch (_) {}
+        })();
+    </script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #09090b; color: #e4e4e7; }
+        html.theme-midnight body { background-color: #05070d; }
+        html.theme-indigo body { background-color: #0b1020; }
+        html.theme-emerald body { background-color: #07120f; }
+        html.theme-crimson body { background-color: #160b10; }
+        html.theme-graphite body { background-color: #0f1116; }
+        .glass-panel {
+            background: rgba(22, 22, 26, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        html.theme-midnight .glass-panel { background: rgba(14, 16, 24, 0.92); border-color: rgba(148,163,184,.16); }
+        html.theme-indigo .glass-panel { background: rgba(21, 29, 56, 0.9); border-color: rgba(99,102,241,.22); }
+        html.theme-emerald .glass-panel { background: rgba(14, 30, 25, 0.9); border-color: rgba(16,185,129,.22); }
+        html.theme-crimson .glass-panel { background: rgba(36, 18, 24, 0.9); border-color: rgba(244,63,94,.2); }
+        html.theme-graphite .glass-panel { background: rgba(23, 24, 28, 0.9); border-color: rgba(161,161,170,.18); }
+        .grid-bg {
+            background-image:
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 32px 32px;
+            mask-image: radial-gradient(circle at 0 0, black 40%, transparent 80%);
+            -webkit-mask-image: radial-gradient(circle at 0 0, black 40%, transparent 80%);
+        }
+        body { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+        body::-webkit-scrollbar { width: 8px; }
+        body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .tag { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; }
+        .tag-red { background: rgba(244,63,94,0.18); color: #fb7185; }
+        .tag-green { background: rgba(34,197,94,0.18); color: #4ade80; }
+        .tag-amber { background: rgba(245,158,11,0.18); color: #fbbf24; }
+        .tag-indigo { background: rgba(99,102,241,0.18); color: #818cf8; }
+        .tag-rose { background: rgba(244,63,94,0.18); color: #fb7185; }
+        .modal-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; }
+        table th { color: #71717a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        tr:hover { background: rgba(255,255,255,0.03); }
+        input, select, textarea {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 8px 12px; color: #f3f4f6; font-size: 14px;
+            outline: none; transition: border-color 0.15s;
+        }
+        input:focus, select:focus, textarea:focus { border-color: #6366f1; }
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; border: none; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-amber { background: #f59e0b; color: #1a1a1a; }
+        .btn-amber:hover { background: #d97706; }
+        .btn-ghost { background: rgba(255,255,255,0.05); color: #d4d4d8; }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+        .btn-red { background: rgba(244,63,94,0.2); color: #fb7185; }
+        .btn-red:hover { background: rgba(244,63,94,0.3); }
+        .mono { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 13px; }
+        .nav-link { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px; color: #a1a1aa; transition: all 0.15s; }
+        .nav-link:hover { background: rgba(255,255,255,0.05); color: white; }
+        #toast { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+        .toast-item { padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; animation: slideIn 0.2s ease; }
+        .toast-success { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .toast-error { background: rgba(244,63,94,0.2); color: #fb7185; border: 1px solid rgba(244,63,94,0.3); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="fixed inset-0 grid-bg pointer-events-none"></div>
+
+    <div class="relative min-h-screen p-6 max-w-[1280px] mx-auto">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <a href="/" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                    <span class="text-sm">На главную</span>
+                </a>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="userBadge" class="text-sm text-gray-400"></span>
+                <a href="/settings" class="text-gray-400 hover:text-white transition-colors">
+                    <i class="ph ph-gear text-xl"></i>
+                </a>
+            </div>
+        </header>
+
+        <!-- Title -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2 flex items-center gap-3">
+                <i class="ph ph-shield-star text-indigo-400"></i>
+                Сканы Clover
+            </h1>
+            <p class="text-gray-400 text-sm">Генерация ссылок для проверки игроков и просмотр результатов сканов</p>
+        </div>
+
+        <!-- Access level banner (level 5 only) -->
+        <div id="levelBanner" class="hidden glass-panel rounded-2xl p-4 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+                        <i class="ph ph-shield-check text-amber-400"></i>
+                        Уровень доступа к сканам
+                    </h3>
+                    <p class="text-gray-500 text-xs mt-1">Минимальный уровень пользователя для доступа к этой странице</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <select id="scansLevelSelect" class="text-center min-w-[80px]">
+                        <option value="1">1 — Мл. модер</option>
+                        <option value="2">2 — Модер</option>
+                        <option value="3">3 — СТМ/СТА</option>
+                        <option value="4">4 — ГА</option>
+                        <option value="5">5 — Супер</option>
+                    </select>
+                    <button onclick="saveScansLevel()" class="btn btn-amber">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex gap-2 mb-6">
+            <button id="tabLinks" onclick="switchTab('links')" class="btn btn-primary">Ссылки</button>
+            <button id="tabScans" onclick="switchTab('scans')" class="btn btn-ghost">Сканы</button>
+            <button id="tabSearch" onclick="switchTab('search')" class="btn btn-ghost">Поиск</button>
+        </div>
+
+        <!-- Links Tab -->
+        <div id="linksTab" class="space-y-6">
+            <!-- Create link -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph ph-plus-circle text-indigo-400"></i>
+                    Создать команду для проверки
+                </h2>
+                <div class="grid sm:grid-cols-1 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Заметка (ник игрока, команда)</label>
+                        <input type="text" id="linkNote" placeholder="Напр: player123 / Team Alpha" class="w-full">
+                    </div>
+                </div>
+                <p class="text-gray-500 text-xs mb-3">Пароль генерируется автоматически. Команда и пароль удалятся через 10 минут или сразу после загрузки скана игроком. Clover удалит сам себя после сканирования.</p>
+                <button onclick="createLink()" class="btn btn-primary">
+                    <i class="ph ph-terminal"></i>
+                    Сгенерировать команду
+                </button>
+                <div id="linkResult" class="mt-4"></div>
+            </div>
+
+            <!-- Links list -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph ph-list text-indigo-400"></i>
+                    Активные ссылки
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-white/10">
+                                <th class="text-left py-3 px-3">Заметка</th>
+                                <th class="text-left py-3 px-3">Админ</th>
+                                <th class="text-left py-3 px-3">Пароль</th>
+                                <th class="text-left py-3 px-3">Истекает</th>
+                                <th class="text-left py-3 px-3">CMD</th>
+                                <th class="text-left py-3 px-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="linksBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scans Tab -->
+        <div id="scansTab" class="hidden space-y-6">
+            <div class="glass-panel rounded-2xl p-6">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph ph-upload-simple text-indigo-400"></i>
+                    Загрузить скан вручную
+                </h2>
+                <p class="text-gray-500 text-sm mb-3">Если игрок не смог отправить скан автоматически, выберите ссылку и загрузите файл <span class="mono text-indigo-300">scan_*.enc</span>.</p>
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-500 mb-1">Ссылка</label>
+                    <select id="manualUploadLink" class="w-full"></select>
+                </div>
+                <div class="flex gap-3 mb-3">
+                    <input type="file" id="manualUploadInput" accept=".enc" class="hidden">
+                    <button onclick="document.getElementById('manualUploadInput').click()" class="btn btn-primary">
+                        <i class="ph ph-upload-simple"></i> Выбрать .enc файл
+                    </button>
+                    <span id="manualUploadName" class="text-gray-400 text-sm self-center"></span>
+                </div>
+                <p id="manualUploadStatus" class="text-xs text-center"></p>
+            </div>
+            <div class="glass-panel rounded-2xl p-6">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph ph-clipboard-text text-indigo-400"></i>
+                    Все сканы
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-white/10">
+                                <th class="text-left py-3 px-3">Время</th>
+                                <th class="text-left py-3 px-3">Админ</th>
+                                <th class="text-left py-3 px-3">Хост</th>
+                                <th class="text-left py-3 px-3">SteamID</th>
+                                <th class="text-left py-3 px-3">HWID</th>
+                                <th class="text-left py-3 px-3">Находки</th>
+                                <th class="text-left py-3 px-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="scansBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="searchTab" class="hidden space-y-6">
+            <div class="glass-panel rounded-2xl p-6">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph ph-magnifying-glass text-indigo-400"></i>
+                    Поиск по SteamID / HWID / нику
+                </h2>
+                <div class="flex gap-3 mb-4">
+                    <input type="text" id="searchInput" placeholder="76561198..., HWID, ник, админ..." class="flex-1" onkeydown="if(event.key==='Enter')doSearch()">
+                    <button onclick="doSearch()" class="btn btn-primary">Искать</button>
+                </div>
+                <div id="searchResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeDetail()">
+        <div class="glass-panel rounded-2xl p-6 max-w-4xl w-full max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-white">Детали скана</h2>
+                <button onclick="closeDetail()" class="text-gray-400 hover:text-white">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            <div id="detailTabs" class="flex flex-wrap gap-2 mb-4 pb-2 border-b border-white/10"></div>
+            <div id="detailContent" class="overflow-y-auto pr-2"></div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/js/session.js"></script>
+    <script>
+        let currentTab = 'links';
+        let currentUser = {};
+
+        function toast(msg, type) {
+            const el = document.createElement('div');
+            el.className = 'toast-item toast-' + (type || 'success');
+            el.textContent = msg;
+            document.getElementById('toast').appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+        function authHeaders() {
+            const u = JSON.parse(localStorage.getItem('user') || '{}');
+            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+        }
+
+        function fmtDate(s) {
+            if (!s) return '-';
+            // timestamp is Unix milliseconds; use the browser/OS locale (same as on PC)
+            try { return new Date(s).toLocaleString(); } catch (_) { return s; }
+        }
+
+        function hitCount(rec) {
+            return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0);
+        }
+
+        function fmtTs(v) {
+            if (!v) return '-';
+            const d = new Date(v);
+            if (isNaN(d)) return '-';
+            // Avoid showing zero/epoch dates (1970) as valid timestamps.
+            if (d.getFullYear() < 2000) return '-';
+            return d.toLocaleString();
+        }
+
+        function cleanSerial(v) {
+            if (v === null || v === undefined) return 'n/a';
+            const s = String(v).trim();
+            if (!s) return 'n/a';
+            const placeholders = ['default string', 'to be filled by o.e.m.', 'to be filled', 'not available', 'not applicable', 'none', 'n/a', 'na', 'unknown', 'null'];
+            if (placeholders.includes(s.toLowerCase())) return 'n/a';
+            return s;
+        }
+
+        function fmtSizeGB(v) {
+            if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return 'n/a';
+            return Math.round(Number(v)) + ' GB';
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            ['links','scans','search'].forEach(t => {
+                document.getElementById(t + 'Tab').classList.toggle('hidden', t !== tab);
+                const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+                btn.className = t === tab ? 'btn btn-primary' : 'btn btn-ghost';
+            });
+            if (tab === 'scans') loadScans();
+        }
+
+        // ─── Init ──────────────────────────────────────────────
+        (async () => {
+            try {
+                const u = JSON.parse(localStorage.getItem('user') || '{}');
+                if (!u.sessionToken) { window.location.href = '/auth?next=/scans'; return; }
+                const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + u.sessionToken } });
+                if (!res.ok) { window.location.href = '/auth?next=/scans'; return; }
+                currentUser = await res.json();
+                document.getElementById('userBadge').textContent = (currentUser.displayName || currentUser.username || '') + ' · ур.' + (currentUser.level || 0);
+
+                // Load min level + check access
+                const lvlRes = await fetch('/api/scans/links', { headers: authHeaders() });
+                if (lvlRes.status === 403) { toast('Нет доступа к сканам — попросите админа включить «Разрешить сканы»', 'error'); setTimeout(() => window.location.href = '/', 2500); return; }
+                if (!lvlRes.ok) { window.location.href = '/auth?next=/scans'; return; }
+                const lvlData = await lvlRes.json();
+
+                // Show level banner for level 5
+                if ((currentUser.level || 0) >= 5) {
+                    document.getElementById('levelBanner').classList.remove('hidden');
+                    document.getElementById('scansLevelSelect').value = String(lvlData.minLevel || 4);
+                }
+
+                loadLinks();
+            } catch (e) {
+                window.location.href = '/auth?next=/scans';
+            }
+        })();
+
+        async function saveScansLevel() {
+            const lvl = parseInt(document.getElementById('scansLevelSelect').value);
+            const res = await fetch('/api/scans/level', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ minLevel: lvl }) });
+            if (res.ok) toast('Уровень доступа обновлён: ' + lvl);
+            else toast('Ошибка: ' + res.status, 'error');
+        }
+
+        // ─── Links ─────────────────────────────────────────────
+        async function createLink() {
+            const note = document.getElementById('linkNote').value.trim();
+            if (!note) { toast('Введите заметку', 'error'); return; }
+            const res = await fetch('/api/scans/links', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ note }) });
+            if (!res.ok) { toast('Ошибка создания ссылки', 'error'); return; }
+            const data = await res.json();
+            const link = data.link;
+            const cmd = data.cmdCommand;
+            const ps = data.psCommand;
+            const expiresMs = link.expiresAt - Date.now();
+            const expiresMin = Math.floor(expiresMs / 60000);
+            const expiresSec = Math.floor((expiresMs % 60000) / 1000);
+            document.getElementById('linkResult').innerHTML = `
+                <div class="glass-panel rounded-xl p-4 space-y-3">
+                    <div class="flex items-center gap-2 bg-amber-500/10 rounded-lg px-3 py-2">
+                        <span class="text-amber-400 text-xs font-semibold">Пароль игрока:</span>
+                        <span class="mono text-amber-400 text-lg font-bold tracking-wider">${esc(link.playerPassword)}</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Команда для CMD (отправь игроку — пусть вставит в командную строку от имени администратора):</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="cmdInput" value="${esc(cmd)}" readonly class="flex-1 mono text-xs bg-black/30 cursor-pointer" onclick="this.select()">
+                            <button onclick="copyCmd('cmdInput')" class="btn btn-primary text-xs px-3 py-2"><i class="ph ph-copy"></i> Копировать</button>
+                        </div>
+                    </div>
+                    <div class="text-xs">
+                        <label class="block text-xs text-emerald-400 mb-1"><i class="ph ph-check-circle"></i> Рекомендуемая: PowerShell (проверяет бинарник, обходит CDN)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="psInput" value="${esc(ps)}" readonly class="flex-1 mono text-xs bg-black/30 cursor-pointer" onclick="this.select()">
+                            <button onclick="copyCmd('psInput')" class="btn btn-primary text-xs px-3 py-2"><i class="ph ph-copy"></i> Копировать</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2"><span class="text-gray-500 text-xs">Истекает через:</span><span id="expiryCountdown" class="text-rose-400 mono text-sm font-semibold">${expiresMin}:${String(expiresSec).padStart(2,'0')}</span></div>
+                    <p class="text-gray-500 text-xs mt-2">Игрок вставляет команду в CMD (от администратора). Clover скачается, просканирует ПК, отправит результаты на сервер и удалит сам себя. Пароль вшит в бинарник — игроку ничего вводить не нужно.</p>
+                </div>`;
+            document.getElementById('linkNote').value = '';
+            toast('Команда для CMD сгенерирована');
+            loadLinks();
+            // Countdown timer
+            const expiryEl = document.getElementById('expiryCountdown');
+            if (expiryEl) {
+                const tick = setInterval(() => {
+                    const remaining = link.expiresAt - Date.now();
+                    if (remaining <= 0) {
+                        clearInterval(tick);
+                        expiryEl.textContent = 'истекла';
+                        loadLinks();
+                        return;
+                    }
+                    const m = Math.floor(remaining / 60000);
+                    const s = Math.floor((remaining % 60000) / 1000);
+                    expiryEl.textContent = m + ':' + String(s).padStart(2, '0');
+                }, 1000);
+            }
+        }
+
+        function copyCmd(inputId) {
+            const input = document.getElementById(inputId);
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => toast('Скопировано в буфер')).catch(() => {
+                document.execCommand('copy');
+                toast('Скопировано');
+            });
+        }
+
+        async function loadLinks() {
+            const res = await fetch('/api/scans/links', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const select = document.getElementById('manualUploadLink');
+            if (select) {
+                select.innerHTML = (data.links || []).map(l => `<option value="${l.id}">${esc(l.note || l.id)} · ${esc(l.playerPassword || '—')}</option>`).join('');
+                if (!data.links || data.links.length === 0) {
+                    select.innerHTML = '<option value="">Нет активных ссылок</option>';
+                }
+            }
+            const body = document.getElementById('linksBody');
+            if (!data.links || data.links.length === 0) { body.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-8">Нет активных ссылок</td></tr>'; return; }
+            const origin = location.origin;
+            body.innerHTML = data.links.map(l => {
+                const remaining = (l.expiresAt || 0) - Date.now();
+                const expired = remaining <= 0;
+                const min = Math.floor(Math.max(0, remaining) / 60000);
+                const sec = Math.floor((Math.max(0, remaining) % 60000) / 1000);
+                const expiryBadge = expired ? '<span class="tag tag-red">истекла</span>' : `<span class="tag tag-amber">${min}:${String(sec).padStart(2,'0')}</span>`;
+                const rndName = 'cl_' + Math.random().toString(36).slice(2, 10) + '.exe';
+                const dlUrl = origin + '/api/scans/download/' + l.id + '?p=' + encodeURIComponent(l.playerPassword || '');
+                const dlUrlB64 = origin + '/api/scans/download-b64/' + l.id + '?p=' + encodeURIComponent(l.playerPassword || '');
+                const cmd = 'curl -sL "' + dlUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '"';
+                const ps = 'powershell -c "$r=iwr -uri \'' + dlUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
+                return `
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-3">${esc(l.note)}</td>
+                    <td class="py-3 px-3 mono text-xs text-gray-400">${esc(l.adminDisplayName || l.adminUser || '-')}</td>
+                    <td class="py-3 px-3 mono text-amber-400 text-xs font-bold tracking-wider">${esc(l.playerPassword || '—')}</td>
+                    <td class="py-3 px-3">${expiryBadge}</td>
+                    <td class="py-3 px-3 space-y-1"><button onclick="copyLinkCmd('${esc(ps)}')" class="btn btn-primary text-xs px-3 py-1.5"><i class="ph ph-terminal"></i> PowerShell</button><button onclick="copyLinkCmd('${esc(cmd)}')" class="btn btn-ghost text-xs px-3 py-1.5"><i class="ph ph-terminal"></i> CMD</button></td>
+                    <td class="py-3 px-3"><button onclick="deleteLink('${l.id}')" class="btn btn-red text-xs px-2 py-1"><i class="ph ph-trash"></i></button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function copyLinkCmd(cmd) {
+            navigator.clipboard.writeText(cmd).then(() => toast('CMD команда скопирована')).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = cmd; document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); document.body.removeChild(ta);
+                toast('CMD команда скопирована');
+            });
+        }
+
+        document.getElementById('manualUploadInput')?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('manualUploadName').textContent = file.name;
+            const linkId = document.getElementById('manualUploadLink').value;
+            if (!linkId) {
+                document.getElementById('manualUploadStatus').textContent = 'Сначала создайте ссылку';
+                document.getElementById('manualUploadStatus').className = 'text-xs text-center text-rose-400';
+                return;
+            }
+            document.getElementById('manualUploadStatus').textContent = 'Загрузка...';
+            document.getElementById('manualUploadStatus').className = 'text-xs text-center text-indigo-300';
+            try {
+                const text = await file.text();
+                const res = await fetch('/api/scans/upload-manual/' + linkId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: text
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('manualUploadStatus').textContent = 'Скан загружен: ' + data.scanId;
+                    document.getElementById('manualUploadStatus').className = 'text-xs text-center text-emerald-400';
+                    loadScans();
+                } else {
+                    document.getElementById('manualUploadStatus').textContent = 'Ошибка: ' + (data.error || res.status);
+                    document.getElementById('manualUploadStatus').className = 'text-xs text-center text-rose-400';
+                }
+            } catch (err) {
+                document.getElementById('manualUploadStatus').textContent = 'Ошибка: ' + err.message;
+                document.getElementById('manualUploadStatus').className = 'text-xs text-center text-rose-400';
+            }
+        });
+
+        async function deleteLink(id) {
+            if (!confirm('Удалить ссылку?')) return;
+            await fetch('/api/scans/links/' + id, { method: 'DELETE', headers: authHeaders() });
+            toast('Ссылка удалена');
+            loadLinks();
+        }
+
+        // ─── Scans ─────────────────────────────────────────────
+        async function loadScans() {
+            const res = await fetch('/api/scans/list', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const body = document.getElementById('scansBody');
+            if (!data.scans || data.scans.length === 0) { body.innerHTML = '<tr><td colspan="7" class="text-center text-gray-500 py-8">Нет сканов</td></tr>'; return; }
+            body.innerHTML = data.scans.map(s => {
+                const hits = hitCount(s);
+                const hostname = s.hardware?.hostname || '-';
+                const hwid = s.hardware?.hwid ? s.hardware.hwid.slice(0,8) + '…' : '-';
+                const steamIds = (s.steam?.accounts || []).map(a => a.steamId).join(', ') || '-';
+                const badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
+                return `
+                <tr class="border-b border-white/5 cursor-pointer" onclick="viewScan('${s.scanId}')">
+                    <td class="py-3 px-3 text-gray-500 text-xs">${fmtDate(s.timestamp)}</td>
+                    <td class="py-3 px-3 mono text-xs text-gray-400">${esc(s.adminDisplayName || s.adminUser || '-')}</td>
+                    <td class="py-3 px-3 text-sm">${esc(hostname)}</td>
+                    <td class="py-3 px-3 mono text-xs">${esc(steamIds)}</td>
+                    <td class="py-3 px-3 mono text-xs text-gray-500">${esc(hwid)}</td>
+                    <td class="py-3 px-3">${badge}</td>
+                    <td class="py-3 px-3"><i class="ph ph-eye text-gray-400"></i></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ─── Search ────────────────────────────────────────────
+        async function doSearch() {
+            const q = document.getElementById('searchInput').value.trim();
+            if (!q) return;
+            const res = await fetch('/api/scans/search?q=' + encodeURIComponent(q), { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const el = document.getElementById('searchResults');
+            if (!data.scans || data.scans.length === 0) { el.innerHTML = '<p class="text-gray-500 text-center py-8">Ничего не найдено</p>'; return; }
+            el.innerHTML = '<table class="w-full"><thead><tr class="border-b border-white/10"><th class="text-left py-2 px-3">Время</th><th class="text-left py-2 px-3">Админ</th><th class="text-left py-2 px-3">Хост</th><th class="text-left py-2 px-3">SteamID</th><th class="text-left py-2 px-3">Находки</th><th></th></tr></thead><tbody>' +
+                data.scans.map(s => {
+                    const hits = hitCount(s);
+                    const badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
+                    return `<tr class="border-b border-white/5 cursor-pointer" onclick="viewScan('${s.scanId}')"><td class="py-3 px-3 text-gray-500 text-xs">${fmtDate(s.timestamp)}</td><td class="py-3 px-3 mono text-xs text-gray-400">${esc(s.adminDisplayName || s.adminUser || '-')}</td><td class="py-3 px-3 text-sm">${esc(s.hardware?.hostname || '-')}</td><td class="py-3 px-3 mono text-xs">${esc((s.steam?.accounts||[]).map(a=>a.steamId).join(', ')||'-')}</td><td class="py-3 px-3">${badge}</td><td class="py-3 px-3"><i class="ph ph-eye text-gray-400"></i></td></tr>`;
+                }).join('') + '</tbody></table>';
+        }
+
+        let currentDetailRec = null;
+        let currentDetailTab = 'overview';
+
+        const detailTabs = [
+            { id: 'overview', label: 'Общее', icon: 'ph-monitor' },
+            { id: 'matches', label: 'Читы', icon: 'ph-warning' },
+            { id: 'deleted', label: 'Удалённое', icon: 'ph-trash' },
+            { id: 'dirs', label: 'Директории', icon: 'ph-folder' },
+            { id: 'network', label: 'Сеть', icon: 'ph-wifi-high' },
+            { id: 'amcache', label: 'Amcache', icon: 'ph-clock' },
+            { id: 'shellbags', label: 'Shellbags', icon: 'ph-briefcase' },
+            { id: 'appdata', label: 'AppData', icon: 'ph-hard-drives' },
+            { id: 'usb', label: 'USB', icon: 'ph-usb' }
+        ];
+
+        function isValidRwx(r) {
+            const addr = r.BaseAddress || r.baseAddress || 0;
+            const size = r.RegionSize || r.regionSize || 0;
+            return addr > 0 && size > 0;
+        }
+
+        function validRwxCount(rec) {
+            return (rec.cs2Rwx || []).filter(isValidRwx).length;
+        }
+
+        function tabHasData(tab, rec) {
+            switch (tab) {
+                case 'overview': return !!(rec.hardware || rec.steam);
+                case 'matches': return (rec.results || []).length > 0;
+                case 'deleted': return (rec.deletedFiles || []).length > 0 || (rec.deletedDirs || []).length > 0;
+                case 'dirs': return (rec.dirs || []).length > 0 || (rec.namedFiles || []).length > 0;
+                case 'network': return (rec.cs2Conns || []).length > 0 || validRwxCount(rec) > 0;
+                case 'amcache': return (rec.amcache || []).length > 0;
+                case 'shellbags': return (rec.shellbags || []).length > 0;
+                case 'appdata': return (rec.appData || []).length > 0;
+                case 'usb': return (rec.hardware?.usb || []).length > 0 || (rec.usb || []).length > 0;
+                default: return false;
+            }
+        }
+
+        function renderDetailTabs() {
+            const el = document.getElementById('detailTabs');
+            el.innerHTML = detailTabs.map(t => {
+                const has = tabHasData(t.id, currentDetailRec);
+                const active = currentDetailTab === t.id;
+                const cls = active ? 'btn btn-primary text-xs' : (has ? 'btn btn-ghost text-xs' : 'btn btn-ghost text-xs opacity-40 cursor-not-allowed');
+                return `<button class="${cls}" ${has ? `onclick="switchDetailTab('${t.id}')"` : ''}><i class="ph ${t.icon}"></i> ${esc(t.label)} ${has ? '' : '(0)'}</button>`;
+            }).join('');
+        }
+
+        function switchDetailTab(tab) {
+            currentDetailTab = tab;
+            renderDetailTabs();
+            renderDetailContent();
+        }
+
+        function renderDetailContent() {
+            const rec = currentDetailRec;
+            let html = '';
+            switch (currentDetailTab) {
+                case 'overview':
+                    html += `<div class="mb-4 text-sm text-gray-400">Проверил: <span class="mono text-amber-400">${esc(rec.adminDisplayName || rec.adminUser || '-')}</span> · ${fmtDate(rec.timestamp)}</div>`;
+                    if (rec.hardware) {
+                        const hw = rec.hardware;
+                        html += `<h3 class="text-white font-bold mb-2 mt-4">Hardware</h3><div class="glass-panel rounded-xl p-4 mb-4"><table class="w-full text-sm">`;
+                        html += `<tr><td class="text-gray-500 py-1 w-40">Hostname</td><td class="mono">${esc(hw.hostname)}</td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">Username</td><td class="mono">${esc(hw.username)}</td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">OS</td><td>${esc(hw.osVersion)}</td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">MachineGuid</td><td class="mono text-xs">${esc(hw.machineGuid)}</td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">CPU</td><td>${esc(hw.cpuName)} <span class="text-gray-500 text-xs">(ID: ${esc(hw.cpuId)})</span></td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">Board</td><td>${esc(hw.boardVendor)} ${esc(hw.boardProduct)} <span class="text-gray-500 text-xs">(S/N: ${cleanSerial(hw.boardSerial)})</span></td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">GPU</td><td>${esc(hw.gpuName)}</td></tr>`;
+                        html += `<tr><td class="text-gray-500 py-1">System S/N</td><td class="mono">${cleanSerial(hw.systemSerial)}</td></tr>`;
+                        if (hw.disks) hw.disks.forEach((d, i) => {
+                            const serial = cleanSerial(d.serialNumber || d.SerialNumber);
+                            const size = fmtSizeGB(d.sizeGB);
+                            html += `<tr><td class="text-gray-500 py-1">Disk ${i}</td><td class="mono text-xs">${esc(d.model)} · S/N: ${serial} · ${size}</td></tr>`;
+                        });
+                        html += `<tr><td class="text-gray-500 py-1 font-bold text-rose-400">HWID</td><td class="mono text-rose-400 font-bold">${esc(hw.hwid)}</td></tr>`;
+                        html += `</table></div>`;
+                    }
+                    if (rec.steam && rec.steam.accounts && rec.steam.accounts.length) {
+                        html += `<h3 class="text-white font-bold mb-2 mt-4">Steam</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">SteamID</th><th class="text-left py-2">Аккаунт</th><th class="text-left py-2">Последний</th><th class="text-left py-2">Время</th></tr></thead><tbody>`;
+                        rec.steam.accounts.forEach(a => { html += `<tr class="border-b border-white/5"><td class="mono py-2">${esc(a.steamId)}</td><td>${esc(a.accountName)}</td><td>${a.mostRecent ? '✓' : ''}</td><td class="text-gray-500 text-xs">${fmtTs(a.timestamp || a.Timestamp)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    break;
+                case 'matches':
+                    if (rec.results && rec.results.length) {
+                        html += `<h3 class="text-rose-400 font-bold mb-2">Cheat Matches</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Matched</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
+                        rec.results.forEach(f => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(f.Name||f.name)}</td><td><span class="tag tag-red">${esc(f.Matched||f.matched)}</span></td><td class="mono text-gray-500 text-xs">${esc(f.Path||f.path)}</td><td class="text-gray-500 text-xs">${fmtTs(f.Modified||f.modified)}</td><td class="text-gray-500 text-xs">${fmtTs(f.Deleted||f.deleted)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-gray-500">Нет совпадений</p>';
+                    break;
+                case 'deleted':
+                    if (rec.deletedFiles && rec.deletedFiles.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Deleted Files</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
+                        rec.deletedFiles.forEach(f => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(f.Name||f.name)}</td><td class="mono text-gray-500 text-xs">${esc(f.Path||f.path)}</td><td class="text-gray-500 text-xs">${fmtTs(f.Deleted||f.deleted)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    if (rec.deletedDirs && rec.deletedDirs.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2 mt-4">Deleted Directories</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
+                        rec.deletedDirs.forEach(d => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(d.Name||d.name)}</td><td class="mono text-gray-500 text-xs">${esc(d.Path||d.path)}</td><td class="text-gray-500 text-xs">${fmtTs(d.Deleted||d.deleted)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    if (!html) html += '<p class="text-gray-500">Нет удалённых объектов</p>';
+                    break;
+                case 'dirs':
+                    if (rec.dirs && rec.dirs.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Target Directories</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th></tr></thead><tbody>`;
+                        rec.dirs.forEach(d => { html += `<tr class="border-b border-white/5"><td class="py-2"><span class="tag tag-amber">${esc(d.Name||d.name)}</span></td><td class="mono text-gray-500 text-xs">${esc(d.Path||d.path)}</td><td class="text-gray-500 text-xs">${fmtTs(d.Modified||d.modified)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    if (rec.namedFiles && rec.namedFiles.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2 mt-4">Named Files</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th></tr></thead><tbody>`;
+                        rec.namedFiles.forEach(f => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(f.Name||f.name)}</td><td class="mono text-gray-500 text-xs">${esc(f.Path||f.path)}</td><td class="text-gray-500 text-xs">${fmtTs(f.Modified||f.modified)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    if (!html) html += '<p class="text-gray-500">Нет директорий</p>';
+                    break;
+                case 'network':
+                    if (rec.cs2Conns && rec.cs2Conns.length) {
+                        html += `<h3 class="text-rose-400 font-bold mb-2">CS2 Remote Connections</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Remote</th><th class="text-left py-2">State</th><th class="text-left py-2">Local</th></tr></thead><tbody>`;
+                        rec.cs2Conns.forEach(c => { html += `<tr class="border-b border-white/5"><td class="mono text-rose-400 py-2">${esc(c.RemoteAddress||c.remoteAddress)}:${c.RemotePort||c.remotePort}</td><td>${esc(c.State||c.state)}</td><td class="mono text-gray-500 text-xs">${esc(c.LocalAddress||c.localAddress)}:${c.LocalPort||c.localPort}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    const validRwx = (rec.cs2Rwx || []).filter(isValidRwx);
+                    if (validRwx.length) {
+                        html += `<h3 class="text-rose-400 font-bold mb-2 mt-4">CS2 RWX Memory</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Address</th><th class="text-left py-2">Size</th><th class="text-left py-2">Protection</th><th class="text-left py-2">Type</th></tr></thead><tbody>`;
+                        validRwx.forEach(r => { html += `<tr class="border-b border-white/5"><td class="mono text-rose-400 py-2">0x${(r.BaseAddress||r.baseAddress||0).toString(16)}</td><td>${Math.round((r.RegionSize||r.regionSize||0)/1024)} KB</td><td>${esc(r.Protection||r.protection)}</td><td>${esc(r.RegionType||r.regionType)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    }
+                    if (!html) html += '<p class="text-gray-500">Нет сетевых данных</p>';
+                    break;
+                case 'amcache':
+                    if (rec.amcache && rec.amcache.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Amcache</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Last Run</th></tr></thead><tbody>`;
+                        rec.amcache.forEach(a => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(a.Name||a.name)}</td><td class="mono text-gray-500 text-xs">${esc(a.Path||a.path)}</td><td class="text-gray-500 text-xs">${fmtTs(a.LastRun||a.lastRun)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-gray-500">Нет данных Amcache</p>';
+                    break;
+                case 'shellbags':
+                    if (rec.shellbags && rec.shellbags.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Shellbags</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Last Access</th></tr></thead><tbody>`;
+                        rec.shellbags.forEach(s => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(s.Name||s.name)}</td><td class="mono text-gray-500 text-xs">${esc(s.Path||s.path)}</td><td class="text-gray-500 text-xs">${fmtTs(s.LastAccess||s.lastAccess)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-gray-500">Нет Shellbags</p>';
+                    break;
+                case 'appdata':
+                    if (rec.appData && rec.appData.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">AppData Suspicious</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">File</th><th class="text-left py-2">Dir</th><th class="text-left py-2">Dir Modified</th><th class="text-left py-2">File Modified</th></tr></thead><tbody>`;
+                        rec.appData.forEach(a => { html += `<tr class="border-b border-white/5"><td class="py-2 mono text-xs">${esc(a.FileName||a.fileName)}</td><td class="mono text-gray-500 text-xs">${esc(a.DirPath||a.dirPath)}</td><td class="text-gray-500 text-xs">${fmtTs(a.DirModified||a.dirModified)}</td><td class="text-gray-500 text-xs">${fmtTs(a.FileModified||a.fileModified)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-gray-500">Нет AppData</p>';
+                    break;
+                case 'usb':
+                    const usb = (rec.hardware && rec.hardware.usb) ? rec.hardware.usb : (rec.usb || []);
+                    if (usb.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">USB Drive Log</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-white/10"><th class="text-left py-2">Friendly Name</th><th class="text-left py-2">VID:PID</th><th class="text-left py-2">Serial</th><th class="text-left py-2">First seen</th><th class="text-left py-2">Last seen</th></tr></thead><tbody>`;
+                        usb.forEach(u => { html += `<tr class="border-b border-white/5"><td class="py-2">${esc(u.friendlyName || u.FriendlyName || '-')}</td><td class="mono text-xs">${esc((u.vid||u.VID||'-') + ':' + (u.pid||u.PID||'-'))}</td><td class="mono text-xs">${esc(u.serialNumber || u.SerialNumber || '-')}</td><td class="text-gray-500 text-xs">${fmtTs(u.firstSeen || u.FirstSeen)}</td><td class="text-gray-500 text-xs">${fmtTs(u.lastSeen || u.LastSeen)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-gray-500">Нет USB устройств</p>';
+                    break;
+                default:
+                    html += '<p class="text-gray-500">Выберите категорию</p>';
+            }
+            document.getElementById('detailContent').innerHTML = html;
+        }
+
+        async function viewScan(id) {
+            const res = await fetch('/api/scans/view/' + id, { headers: authHeaders() });
+            if (!res.ok) { toast('Скан не найден', 'error'); return; }
+            currentDetailRec = await res.json();
+            currentDetailTab = 'overview';
+            renderDetailTabs();
+            renderDetailContent();
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function closeDetail() { document.getElementById('detailModal').classList.add('hidden'); }
+    </script>
+</body>
+</html>

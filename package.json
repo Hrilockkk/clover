@@ -1,0 +1,17 @@
+{
+  "name": "clover",
+  "version": "1.0.0",
+  "description": "Clover — система проверки игроков: одноразовые ссылки, персональный clover.exe, отчёты в панели",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "adduser": "node scripts/adduser.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
+}

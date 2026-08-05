@@ -1,0 +1,11 @@
+/scanner.exe
+/scanner.exe~
+/scan_results_*.txt
+/scan_results_*.json
+*.exe~
+*.exe
+/bin/
+/vendor/
+/.idea/
+/.vscode/
+*.log

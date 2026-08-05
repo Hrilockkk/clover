@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Clover Scan</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #09090b; color: #e4e4e7; }
+        .glass-panel { background: rgba(22,22,26,0.9); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: 16px; cursor: pointer; border: none; transition: all 0.15s; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:hover { background: #4f46e5; }
+        .mono { font-family: 'Cascadia Code', 'Consolas', monospace; }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex items-center justify-center p-6">
+        <div class="glass-panel rounded-2xl p-8 max-w-lg w-full" id="content">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-500/20 mb-4">
+                    <i class="ph ph-shield-star text-3xl text-indigo-400"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-white">Clover Scan</h1>
+            </div>
+            <div id="body"></div>
+        </div>
+    </div>
+    <script>
+        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function setupDropzone(id) {
+            const dz = document.getElementById('dropzone');
+            const status = document.getElementById('manualStatus');
+            if (!dz) return;
+            ['dragenter','dragover','dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
+            ['dragenter','dragover'].forEach(e => dz.addEventListener(e, () => dz.classList.add('border-indigo-500','text-indigo-400')));
+            ['dragleave','drop'].forEach(e => dz.addEventListener(e, () => dz.classList.remove('border-indigo-500','text-indigo-400')));
+            dz.addEventListener('drop', async (ev) => {
+                const file = ev.dataTransfer.files[0];
+                if (!file) return;
+                if (!file.name.endsWith('.enc')) { status.textContent = 'Нужен файл .enc'; status.className = 'text-xs mt-2 text-center text-rose-400'; return; }
+                status.textContent = 'Загрузка...'; status.className = 'text-xs mt-2 text-center text-indigo-300';
+                try {
+                    const text = await file.text();
+                    const res = await fetch('/api/scans/upload-manual/' + id, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: text
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        status.textContent = 'Скан успешно загружен: ' + data.scanId;
+                        status.className = 'text-xs mt-2 text-center text-emerald-400';
+                    } else {
+                        status.textContent = 'Ошибка: ' + (data.error || res.status);
+                        status.className = 'text-xs mt-2 text-center text-rose-400';
+                    }
+                } catch (e) {
+                    status.textContent = 'Ошибка: ' + e.message;
+                    status.className = 'text-xs mt-2 text-center text-rose-400';
+                }
+            });
+        }
+        (async () => {
+            const params = new URLSearchParams(location.search);
+            const id = params.get('id');
+            if (!id) { document.getElementById('body').innerHTML = '<p class="text-rose-400 text-center">Ссылка недействительна: отсутствует ID</p>'; return; }
+            try {
+                const res = await fetch('/api/scans/page/' + id);
+                if (!res.ok) { document.getElementById('body').innerHTML = '<p class="text-rose-400 text-center">Ссылка не найдена или удалена</p>'; return; }
+                const data = await res.json();
+                let html = '';
+                if (data.note) html += `<p class="text-gray-400 text-sm mb-4 text-center">Заметка: ${esc(data.note)}</p>`;
+                if (data.adminDisplayName) html += `<p class="text-gray-500 text-xs mb-6 text-center">Выдали: ${esc(data.adminDisplayName)}</p>`;
+                html += `<div class="space-y-4">
+                    <div class="glass-panel rounded-xl p-4">
+                        <p class="text-white font-semibold mb-2">1. Скачайте Clover</p>
+                        <a href="${esc(data.downloadUrl)}" class="btn btn-primary w-full justify-center">
+                            <i class="ph ph-download-simple"></i> Скачать clover.exe
+                        </a>
+                    </div>
+                    <div class="glass-panel rounded-xl p-4">
+                        <p class="text-white font-semibold mb-2">2. Запустите от имени администратора</p>
+                        <p class="text-gray-400 text-sm">Кликните правой кнопкой по clover.exe → «Запуск от имени администратора»</p>
+                    </div>`;
+                if (data.hasPassword) {
+                    html += `<div class="glass-panel rounded-xl p-4">
+                        <p class="text-white font-semibold mb-2">3. Введите пароль</p>
+                        <p class="text-gray-400 text-sm">При запуске Clover попросит пароль. Введите пароль, который вам выдали.</p>
+                    </div>`;
+                } else {
+                    html += `<div class="glass-panel rounded-xl p-4">
+                        <p class="text-white font-semibold mb-2">3. Сканирование запустится автоматически</p>
+                    </div>`;
+                }
+                html += `<div class="glass-panel rounded-xl p-4">
+                    <p class="text-gray-400 text-sm">Результаты сканирования будут автоматически отправлены на сервер по завершении. Ничего дополнительно нажимать не нужно.</p>
+                </div>
+                <div class="glass-panel rounded-xl p-4">
+                    <p class="text-white font-semibold mb-2">Если автоматическая отправка не сработала</p>
+                    <p class="text-gray-400 text-sm mb-3">Перетащите сюда файл <span class="mono text-indigo-300">scan_*.enc</span>, который создал Clover рядом с собой.</p>
+                    <div id="dropzone" class="border-2 border-dashed border-white/20 rounded-xl p-6 text-center text-gray-500 text-sm hover:border-indigo-500 hover:text-indigo-400 transition-colors cursor-pointer">
+                        <i class="ph ph-upload-simple text-2xl mb-2 block"></i>
+                        Перетащите .enc файл сюда
+                    </div>
+                    <p id="manualStatus" class="text-xs mt-2 text-center"></p>
+                </div>
+                </div>`;
+                document.getElementById('body').innerHTML = html;
+                setupDropzone(id);
+            } catch (e) {
+                document.getElementById('body').innerHTML = '<p class="text-rose-400 text-center">Ошибка загрузки: ' + esc(e.message) + '</p>';
+            }
+        })();
+    </script>
+</body>
+</html>
