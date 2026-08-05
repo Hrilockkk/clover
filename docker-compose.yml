@@ -3,16 +3,43 @@ services:
     build: .
     container_name: clover
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "3000:3000"
     environment:
       PORT: 3000
-      # Первый админ — применяется один раз, на пустой базе.
-      # Меняется здесь или в .env рядом с compose-файлом.
+      # Приложение ходит в Postgres по внутренней сети compose
+      DATABASE_URL: postgres://clover:${POSTGRES_PASSWORD:-clover}@db:5432/clover
+      # Первый админ — применяется один раз, на пустой базе
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
     volumes:
+      # одноразовые ссылки (файлы, TTL 10 мин) — переживают рестарт контейнера
       - clover-data:/app/data
+
+  db:
+    image: postgres:16-alpine
+    container_name: clover-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clover
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clover}
+      POSTGRES_DB: clover
+    ports:
+      # Наружу — чтобы подключаться из DBeaver/DataGrip по строке:
+      #   postgres://clover:<POSTGRES_PASSWORD>@<IP-сервера>:5432/clover
+      # Если БД снаружи не нужна — замени на  "127.0.0.1:5432:5432"
+      - "5432:5432"
+    volumes:
+      - clover-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clover"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   clover-data:
+  clover-pgdata:

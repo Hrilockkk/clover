@@ -132,7 +132,7 @@ async function handleAuth(req, res, parsedUrl) {
     if (parsedUrl.pathname === '/api/login' && req.method === 'POST') {
         let body;
         try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
-        const user = db.checkCredentials(body.username, body.password);
+        const user = await db.checkCredentials(body.username, body.password);
         if (!user) return sendError(res, 401, 'BAD_CREDENTIALS', 'Неверный логин или пароль'), true;
         const token = await db.createSession(user.id);
         res.writeHead(200, {
@@ -202,8 +202,9 @@ async function servePage(req, res, parsedUrl) {
 // ─── Запуск ─────────────────────────────────────────────────────────────────
 
 async function main() {
+    await db.initSchema();
     // Первый пользователь — супер-админ (уровень 5)
-    const seed = db.seedAdmin();
+    const seed = await db.seedAdmin();
     if (seed) {
         await db.createUser({
             username: seed.username,

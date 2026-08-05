@@ -21,7 +21,8 @@ if (!username || !password) {
     process.exit(1);
 }
 
-db.getUserByUsername(username).then(existing => {
+db.initSchema()
+.then(() => db.getUserByUsername(username)).then(existing => {
     if (existing) {
         console.error('Пользователь "' + username + '" уже существует');
         process.exit(1);

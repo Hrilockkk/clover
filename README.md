@@ -12,6 +12,30 @@ npm start
 
 Открыть: **http://localhost:3000**
 
+## Доступ к базе данных (DBeaver / DataGrip / pgAdmin)
+
+**В docker-compose PostgreSQL уже включён** и торчит наружу на порту 5432.
+Строка подключения — вставляешь в свой DB-клиент и шаманишь:
+
+```
+postgres://clover:<POSTGRES_PASSWORD>@<IP-сервера>:5432/clover
+```
+
+Пароль задаётся `POSTGRES_PASSWORD` в `.env` (по умолчанию `clover` — смени!).
+
+Таблицы: `scans` (сканы: payload + поля для поиска), `users`, `sessions`, `settings`.
+
+Безопасный вариант вместо открытого порта: в `docker-compose.yml` замени
+`"5432:5432"` на `"127.0.0.1:5432:5432"` и ходи через SSH-туннель:
+
+```bash
+ssh -L 5432:localhost:5432 user@сервер
+# и в DB-клиенте: postgres://clover:<pass>@localhost:5432/clover
+```
+
+Приложение само выбирает драйвер: есть `DATABASE_URL` → PostgreSQL,
+нет → SQLite в `data/clover.db`.
+
 ## Деплой на свой сервер
 
 ### Вариант 1: Docker (рекомендуется) — одна команда
@@ -21,15 +45,17 @@ npm start
 git clone https://<ТОКЕН>@github.com/Hrilockkk/clover.git
 cd clover
 
-# 2. Пароль первого админа (опционально, по умолчанию admin/admin)
+# 2. Пароли (админ панели + postgres)
 echo "ADMIN_PASSWORD=$(openssl rand -hex 8)" > .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 12)" >> .env
 
-# 3. Поднять
+# 3. Поднять (приложение + PostgreSQL)
 docker compose up -d --build
 ```
 
-Готово: сервис на порту **3000**, база — в named volume `clover-data`
-(переживает пересборку и обновления). Логи: `docker compose logs -f`.
+Готово: сервис на порту **3000**, PostgreSQL на **5432** (строка подключения —
+в разделе «Доступ к базе данных»). Данные — в named volumes, переживают
+пересборку. Логи: `docker compose logs -f`.
 Обновление: `git pull && docker compose up -d --build`.
 
 ### Вариант 2: Без Docker (bare metal, Ubuntu/Debian)

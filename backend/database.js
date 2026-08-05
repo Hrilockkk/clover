@@ -1,37 +1,63 @@
 'use strict';
 
 /**
- * database.js — DB-слой Clover на SQLite (better-sqlite3).
+ * database.js — DB-слой Clover. Два драйвера:
  *
- * Файл базы: data/clover.db (создаётся автоматически, отдельный процесс БД
- * не нужен). Реализует контракт, который ожидают scans.js и scans.routes.js:
+ *   • PostgreSQL — если задан DATABASE_URL (postgres://user:pass@host:5432/dbname).
+ *     Строку подключения можно вставить в DBeaver/DataGrip/pgAdmin и смотреть/править
+ *     данные напрямую.
+ *   • SQLite (по умолчанию) — файл data/clover.db, ноль зависимостей для локалки.
  *
- *   saveScanRecord(rec) / getScanRecord(id) / listScanRecords() / searchScanRecords(q)
- *   getSetting(key, def) / setSetting(key, value)
- *   getUserById(id)
- *
- * Плюс auth-функции для server.js: getUserByUsername, createUser,
- * createSession, getSessionByToken, deleteSession.
+ * Контракт для scans.js и scans.routes.js:
+ *   saveScanRecord / getScanRecord / listScanRecords / searchScanRecords
+ *   getSetting / setSetting / getUserById
+ * Плюс auth: getUserByUsername, createUser, checkCredentials,
+ *            createSession, getSessionByToken, deleteSession, seedAdmin, initSchema.
  */
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const Database = require('better-sqlite3');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-fs.mkdirSync(DATA_DIR, { recursive: true });
+const USE_PG = Boolean(process.env.DATABASE_URL);
 
-const db = new Database(path.join(DATA_DIR, 'clover.db'));
-db.pragma('journal_mode = WAL');
+// ─── Унифицированная обёртка запросов (плейсхолдеры '?', для pg → $1..$n) ───
 
-db.exec(`
+let sql;
+
+if (USE_PG) {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const toPg = (text) => { let i = 0; return text.replace(/\?/g, () => '$' + (++i)); };
+    sql = {
+        all: async (t, p = []) => (await pool.query(toPg(t), p)).rows,
+        get: async (t, p = []) => ((await pool.query(toPg(t), p)).rows[0]) ?? null,
+        run: async (t, p = []) => { await pool.query(toPg(t), p); },
+        exec: async (t) => { await pool.query(t); }
+    };
+} else {
+    const Database = require('better-sqlite3');
+    const DATA_DIR = path.join(__dirname, '..', 'data');
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const db = new Database(path.join(DATA_DIR, 'clover.db'));
+    db.pragma('journal_mode = WAL');
+    sql = {
+        all: async (t, p = []) => db.prepare(t).all(...p),
+        get: async (t, p = []) => db.prepare(t).get(...p) ?? null,
+        run: async (t, p = []) => { db.prepare(t).run(...p); },
+        exec: async (t) => { db.exec(t); }
+    };
+}
+
+// ─── Схема ──────────────────────────────────────────────────────────────────
+
+const DDL_SQLITE = `
 CREATE TABLE IF NOT EXISTS scans (
     id TEXT PRIMARY KEY,
     link_id TEXT,
     admin_user TEXT,
     admin_display_name TEXT,
-    timestamp INTEGER NOT NULL,
+    "timestamp" INTEGER NOT NULL,
     hwid TEXT,
     hostname TEXT,
     username TEXT,
@@ -39,7 +65,7 @@ CREATE TABLE IF NOT EXISTS scans (
     steam_names TEXT,
     payload TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_scans_timestamp   ON scans(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_scans_timestamp   ON scans("timestamp" DESC);
 CREATE INDEX IF NOT EXISTS idx_scans_admin       ON scans(admin_user);
 CREATE INDEX IF NOT EXISTS idx_scans_hwid        ON scans(hwid);
 CREATE INDEX IF NOT EXISTS idx_scans_hostname    ON scans(hostname);
@@ -66,57 +92,62 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    "key" TEXT PRIMARY KEY,
+    "value" TEXT NOT NULL
 );
-`);
+`;
+
+const DDL_PG = DDL_SQLITE; // диалект совпадает (TEXT/INTEGER, "quoted" идентификаторы)
+
+async function initSchema() {
+    await sql.exec(USE_PG ? DDL_PG : DDL_SQLITE);
+}
 
 // ─── Scans ──────────────────────────────────────────────────────────────────
-
-const upsertScan = db.prepare(`
-    INSERT INTO scans (id, link_id, admin_user, admin_display_name, timestamp,
-                       hwid, hostname, username, steam_ids, steam_names, payload)
-    VALUES (@id, @link_id, @admin_user, @admin_display_name, @timestamp,
-            @hwid, @hostname, @username, @steam_ids, @steam_names, @payload)
-    ON CONFLICT(id) DO UPDATE SET
-        link_id=excluded.link_id, admin_user=excluded.admin_user,
-        admin_display_name=excluded.admin_display_name, timestamp=excluded.timestamp,
-        hwid=excluded.hwid, hostname=excluded.hostname, username=excluded.username,
-        steam_ids=excluded.steam_ids, steam_names=excluded.steam_names,
-        payload=excluded.payload
-`);
 
 function extractScanFields(rec) {
     const hw = rec.hardware || {};
     const accounts = (rec.steam && Array.isArray(rec.steam.accounts)) ? rec.steam.accounts : [];
-    return {
-        id: String(rec.scanId),
-        link_id: rec.linkId || null,
-        admin_user: rec.adminUser || '',
-        admin_display_name: rec.adminDisplayName || '',
-        timestamp: Number(rec.timestamp) || Date.now(),
-        hwid: hw.hwid || '',
-        hostname: hw.hostname || '',
-        username: hw.username || '',
-        steam_ids: accounts.map(a => a.steamId).filter(Boolean).join(','),
-        steam_names: accounts.map(a => a.accountName).filter(Boolean).join(','),
-        payload: JSON.stringify(rec)
-    };
+    return [
+        String(rec.scanId),
+        rec.linkId || null,
+        rec.adminUser || '',
+        rec.adminDisplayName || '',
+        Number(rec.timestamp) || Date.now(),
+        hw.hwid || '',
+        hw.hostname || '',
+        hw.username || '',
+        accounts.map(a => a.steamId).filter(Boolean).join(','),
+        accounts.map(a => a.accountName).filter(Boolean).join(','),
+        JSON.stringify(rec)
+    ];
 }
+
+const UPSERT_SCAN = `
+    INSERT INTO scans (id, link_id, admin_user, admin_display_name, "timestamp",
+                       hwid, hostname, username, steam_ids, steam_names, payload)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        link_id=excluded.link_id, admin_user=excluded.admin_user,
+        admin_display_name=excluded.admin_display_name, "timestamp"=excluded."timestamp",
+        hwid=excluded.hwid, hostname=excluded.hostname, username=excluded.username,
+        steam_ids=excluded.steam_ids, steam_names=excluded.steam_names,
+        payload=excluded.payload
+`;
 
 async function saveScanRecord(rec) {
     if (!rec || !rec.scanId) throw new Error('scan record without scanId');
-    upsertScan.run(extractScanFields(rec));
+    await sql.run(UPSERT_SCAN, extractScanFields(rec));
 }
 
 async function getScanRecord(id) {
-    const row = db.prepare('SELECT payload FROM scans WHERE id = ?').get(String(id));
+    const row = await sql.get('SELECT payload FROM scans WHERE id = ?', [String(id)]);
     if (!row) return null;
     try { return JSON.parse(row.payload); } catch (_) { return null; }
 }
 
 async function listScanRecords() {
-    const rows = db.prepare('SELECT payload FROM scans ORDER BY timestamp DESC').all();
+    const rows = await sql.all('SELECT payload FROM scans ORDER BY "timestamp" DESC');
     return rows.map(r => { try { return JSON.parse(r.payload); } catch (_) { return null; } }).filter(Boolean);
 }
 
@@ -124,7 +155,7 @@ async function searchScanRecords(q) {
     q = String(q || '').trim();
     if (!q) return listScanRecords();
     const like = '%' + q.replace(/[%_]/g, c => '\\' + c) + '%';
-    const rows = db.prepare(`
+    const rows = await sql.all(`
         SELECT payload FROM scans
         WHERE hwid LIKE ? ESCAPE '\\'
            OR hostname LIKE ? ESCAPE '\\'
@@ -133,22 +164,24 @@ async function searchScanRecords(q) {
            OR steam_names LIKE ? ESCAPE '\\'
            OR admin_user LIKE ? ESCAPE '\\'
            OR admin_display_name LIKE ? ESCAPE '\\'
-        ORDER BY timestamp DESC
-    `).all(like, like, like, like, like, like, like);
+        ORDER BY "timestamp" DESC
+    `, [like, like, like, like, like, like, like]);
     return rows.map(r => { try { return JSON.parse(r.payload); } catch (_) { return null; } }).filter(Boolean);
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 
 async function getSetting(key, defaultValue) {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(String(key));
+    const row = await sql.get('SELECT "value" FROM settings WHERE "key" = ?', [String(key)]);
     if (!row) return defaultValue;
     try { return JSON.parse(row.value); } catch (_) { return row.value; }
 }
 
 async function setSetting(key, value) {
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
-      .run(String(key), JSON.stringify(value));
+    await sql.run(
+        'INSERT INTO settings ("key", "value") VALUES (?, ?) ON CONFLICT("key") DO UPDATE SET "value"=excluded."value"',
+        [String(key), JSON.stringify(value)]
+    );
 }
 
 // ─── Users ──────────────────────────────────────────────────────────────────
@@ -173,36 +206,32 @@ function publicUser(row) {
         id: row.id,
         username: row.username,
         displayName: row.display_name || row.username,
-        level: row.level,
-        canScan: Boolean(row.can_scan)
+        level: Number(row.level),
+        canScan: Boolean(Number(row.can_scan))
     };
 }
 
 async function getUserById(id) {
-    return publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(String(id)));
+    return publicUser(await sql.get('SELECT * FROM users WHERE id = ?', [String(id)]));
 }
 
 async function getUserByUsername(username) {
-    return db.prepare('SELECT * FROM users WHERE username = ?').get(String(username));
+    return sql.get('SELECT * FROM users WHERE username = ?', [String(username)]);
 }
 
 async function createUser({ username, password, displayName, level, canScan }) {
-    const row = {
-        id: crypto.randomBytes(8).toString('hex'),
-        username: String(username),
-        display_name: String(displayName || username || ''),
-        password_hash: hashPassword(password),
-        level: Number(level) || 1,
-        can_scan: canScan ? 1 : 0,
-        created_at: Date.now()
-    };
-    db.prepare(`INSERT INTO users (id, username, display_name, password_hash, level, can_scan, created_at)
-                VALUES (@id, @username, @display_name, @password_hash, @level, @can_scan, @created_at)`).run(row);
-    return getUserById(row.id);
+    const id = crypto.randomBytes(8).toString('hex');
+    await sql.run(
+        `INSERT INTO users (id, username, display_name, password_hash, level, can_scan, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, String(username), String(displayName || username || ''), hashPassword(password),
+         Number(level) || 1, canScan ? 1 : 0, Date.now()]
+    );
+    return getUserById(id);
 }
 
-function checkCredentials(username, password) {
-    const row = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username));
+async function checkCredentials(username, password) {
+    const row = await sql.get('SELECT * FROM users WHERE username = ?', [String(username)]);
     if (!row || !verifyPassword(password, row.password_hash)) return null;
     return publicUser(row);
 }
@@ -213,17 +242,19 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 дней
 
 async function createSession(userId) {
     const token = crypto.randomBytes(32).toString('hex');
-    db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
-      .run(token, String(userId), Date.now(), Date.now() + SESSION_TTL_MS);
+    await sql.run(
+        'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+        [token, String(userId), Date.now(), Date.now() + SESSION_TTL_MS]
+    );
     return token;
 }
 
 async function getSessionByToken(token) {
     if (!token) return null;
-    const row = db.prepare('SELECT * FROM sessions WHERE token = ?').get(String(token));
+    const row = await sql.get('SELECT * FROM sessions WHERE token = ?', [String(token)]);
     if (!row) return null;
-    if (Date.now() > row.expires_at) {
-        db.prepare('DELETE FROM sessions WHERE token = ?').run(String(token));
+    if (Date.now() > Number(row.expires_at)) {
+        await sql.run('DELETE FROM sessions WHERE token = ?', [String(token)]);
         return null;
     }
     const user = await getUserById(row.user_id);
@@ -232,20 +263,22 @@ async function getSessionByToken(token) {
 }
 
 async function deleteSession(token) {
-    db.prepare('DELETE FROM sessions WHERE token = ?').run(String(token));
+    await sql.run('DELETE FROM sessions WHERE token = ?', [String(token)]);
 }
 
 // ─── Seed ───────────────────────────────────────────────────────────────────
 
-function seedAdmin() {
-    const count = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
-    if (count > 0) return null;
-    const username = process.env.ADMIN_USERNAME || 'admin';
-    const password = process.env.ADMIN_PASSWORD || 'admin';
-    return { username, password };
+async function seedAdmin() {
+    const row = await sql.get('SELECT COUNT(*) AS c FROM users');
+    if (Number(row.c) > 0) return null;
+    return {
+        username: process.env.ADMIN_USERNAME || 'admin',
+        password: process.env.ADMIN_PASSWORD || 'admin'
+    };
 }
 
 module.exports = {
+    initSchema,
     saveScanRecord, getScanRecord, listScanRecords, searchScanRecords,
     getSetting, setSetting,
     getUserById, getUserByUsername, createUser, checkCredentials, hashPassword,
