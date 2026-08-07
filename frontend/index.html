@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Clover — проверка игроков · Fear Project</title>
-    <meta name="description" content="Clover Scan — одноразовые ссылки для проверки ПК игрока: совпадения, удалённые файлы, сеть, amcache, shellbags и отчёт в панели.">
+    <meta name="description" content="Clover Scan — система проверки игроков: одноразовая ссылка, автоматическая проверка ПК и готовый отчёт в панели.">
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -68,8 +68,8 @@
                     </h1>
                     <p class="text-emerald-100/55 text-base leading-relaxed mb-8 max-w-lg">
                         Одноразовая ссылка, персональный <span class="mono text-emerald-300 text-sm">clover.exe</span>
-                        и готовый отчёт в панели — как справа. Совпадения по сигнатурам, удалённые файлы,
-                        сетевые соединения, amcache, shellbags и USB-устройства.
+                        и готовый отчёт в панели — как справа. Сканер сам проверяет систему,
+                        отправляет результат и удаляется.
                     </p>
                     <div class="flex flex-wrap gap-3 mb-6">
                         <a href="/scans" class="btn btn-primary"><i class="ph ph-plus-circle"></i>Создать проверку</a>
@@ -77,8 +77,8 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <span class="tag tag-em">TTL ссылки — 10 минут</span>
-                        <span class="tag tag-lime">AES-256-GCM</span>
-                        <span class="tag tag-em">Отчёт — 9 вкладок</span>
+                        <span class="tag tag-lime">Шифрованная передача</span>
+                        <span class="tag tag-em">Файл самоуничтожается</span>
                     </div>
                 </div>
 
@@ -97,28 +97,28 @@
                     <div class="p-5 overflow-x-auto">
                         <div class="min-w-[420px]">
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 pb-2 border-b border-emerald-300/10">
-                                <span class="th">Хост</span><span class="th">SteamID</span><span class="th">HWID</span><span class="th">Находки</span>
+                                <span class="th">Проверка</span><span class="th">Дата</span><span class="th">Длит.</span><span class="th">Итог</span>
                             </div>
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
-                                <span class="text-white text-sm font-semibold">PLAYER-PC</span>
-                                <span class="mono text-emerald-100/60 text-xs">76561198…22222</span>
-                                <span class="mono text-emerald-100/60 text-xs">LINK-HW…</span>
-                                <span class="tag tag-red">1</span>
+                                <span class="text-white text-sm font-semibold">vasya</span>
+                                <span class="mono text-emerald-100/60 text-xs">сегодня 14:22</span>
+                                <span class="mono text-emerald-100/60 text-xs">48 c</span>
+                                <span class="tag tag-red">находки</span>
                             </div>
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
-                                <span class="text-white text-sm font-semibold">ENC-PC</span>
-                                <span class="mono text-emerald-100/60 text-xs">76561198…11111</span>
-                                <span class="mono text-emerald-100/60 text-xs">ENCHWI…</span>
+                                <span class="text-white text-sm font-semibold">kio</span>
+                                <span class="mono text-emerald-100/60 text-xs">сегодня 13:05</span>
+                                <span class="mono text-emerald-100/60 text-xs">51 c</span>
                                 <span class="tag tag-em">чисто</span>
                             </div>
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3">
-                                <span class="text-white text-sm font-semibold">DESKTOP-TEST</span>
-                                <span class="mono text-emerald-100/60 text-xs">76561198…00000</span>
-                                <span class="mono text-emerald-100/60 text-xs">TESTHW…</span>
-                                <span class="tag tag-red">1</span>
+                                <span class="text-white text-sm font-semibold">m4k</span>
+                                <span class="mono text-emerald-100/60 text-xs">вчера 21:40</span>
+                                <span class="mono text-emerald-100/60 text-xs">47 c</span>
+                                <span class="tag tag-em">чисто</span>
                             </div>
                             <div class="mt-4 mono text-[11px] text-emerald-200/40">
-                                обзор · совпадения · удалённое · папки · сеть · amcache · shellbags · appdata · usb
+                                подробности скана видны только проверяющему
                             </div>
                         </div>
                     </div>
@@ -148,7 +148,7 @@
                             <span class="mono text-xs text-emerald-200/30">шаг 2</span>
                         </div>
                         <h3 class="text-white font-semibold mb-2">Игрок скачивает файл</h3>
-                        <p class="text-emerald-100/50 text-sm leading-relaxed">Сервер встраивает конфиг именно этой ссылки в персональный clover.exe со случайным именем.</p>
+                        <p class="text-emerald-100/50 text-sm leading-relaxed">По ссылке игрок получает персональный clover.exe, который сервер готовит специально под эту проверку.</p>
                     </div>
                     <div class="glass card-hover p-5">
                         <div class="flex items-center justify-between mb-4">
@@ -164,55 +164,55 @@
                             <span class="mono text-xs text-emerald-200/30">шаг 4</span>
                         </div>
                         <h3 class="text-white font-semibold mb-2">Отчёт в панели</h3>
-                        <p class="text-emerald-100/50 text-sm leading-relaxed">Скан появляется в списке, файл самоуничтожается. Поиск — по SteamID, HWID, нику или hostname.</p>
+                        <p class="text-emerald-100/50 text-sm leading-relaxed">Скан появляется в списке, файл самоуничтожается. Вся история проверок — с быстрым поиском.</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Что попадает в отчёт -->
+            <!-- Что умеет Clover -->
             <section class="pb-16">
                 <div class="mb-8">
                     <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
-                        <i class="ph ph-magnifying-glass text-emerald-300"></i>Что попадает в отчёт
+                        <i class="ph ph-magnifying-glass text-emerald-300"></i>Что умеет Clover
                     </h2>
-                    <p class="text-emerald-100/50 text-sm">Девять разделов — те же вкладки, что и в панели просмотра скана.</p>
+                    <p class="text-emerald-100/50 text-sm">Функции проверки — от запуска до готового результата в панели.</p>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-cpu text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Обзор</p><p class="text-emerald-100/45 text-xs mt-1">HWID, hostname, пользователь, Steam-аккаунты</p></div>
+                        <i class="ph ph-scan text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Проверка системы</p><p class="text-emerald-100/45 text-xs mt-1">Полный осмотр ПК игрока за один запуск</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-target text-lg text-rose-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Совпадения</p><p class="text-emerald-100/45 text-xs mt-1">Найденные сигнатуры и подозрительные файлы</p></div>
+                        <i class="ph ph-file-arrow-down text-lg text-lime-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Персональный файл</p><p class="text-emerald-100/45 text-xs mt-1">Каждый clover.exe собирается сервером под конкретную ссылку</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-trash text-lg text-lime-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Удалённое</p><p class="text-emerald-100/45 text-xs mt-1">Следы удалённых файлов и папок</p></div>
+                        <i class="ph ph-lightning text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Быстрый запуск</p><p class="text-emerald-100/45 text-xs mt-1">Без установки: проверка занимает меньше минуты</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-folder-open text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Папки</p><p class="text-emerald-100/45 text-xs mt-1">Каталоги с датами изменения</p></div>
+                        <i class="ph ph-robot text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Автономность</p><p class="text-emerald-100/45 text-xs mt-1">Ничего настраивать не нужно — от запуска до отчёта всё делает сам сканер</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-network text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Сеть</p><p class="text-emerald-100/45 text-xs mt-1">Соединения CS2 и RWX-участки памяти</p></div>
+                        <i class="ph ph-paper-plane-tilt text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Авто-отчёт</p><p class="text-emerald-100/45 text-xs mt-1">Результат сам уходит на сервер и появляется в панели</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-clock-counter-clockwise text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Amcache</p><p class="text-emerald-100/45 text-xs mt-1">История запуска программ в системе</p></div>
+                        <i class="ph ph-upload-simple text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Запасной путь</p><p class="text-emerald-100/45 text-xs mt-1">Если авто-отправка не сработала — файл перетаскивают на странице</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-briefcase text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">Shellbags</p><p class="text-emerald-100/45 text-xs mt-1">Куда заходил пользователь в проводнике</p></div>
+                        <i class="ph ph-archive text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">История</p><p class="text-emerald-100/45 text-xs mt-1">Все проверки хранятся в панели и доступны в любой момент</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-hard-drives text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">AppData</p><p class="text-emerald-100/45 text-xs mt-1">Файлы приложений и следы конфигов</p></div>
+                        <i class="ph ph-funnel-simple text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Поиск</p><p class="text-emerald-100/45 text-xs mt-1">Быстрый поиск игрока по прошлым проверкам</p></div>
                     </div>
                     <div class="glass card-hover p-4 flex items-start gap-3">
-                        <i class="ph ph-usb text-lg text-emerald-300 mt-0.5"></i>
-                        <div><p class="text-white text-sm font-semibold">USB</p><p class="text-emerald-100/45 text-xs mt-1">Подключавшиеся устройства</p></div>
+                        <i class="ph ph-lock-key text-lg text-emerald-300 mt-0.5"></i>
+                        <div><p class="text-white text-sm font-semibold">Одноразовость</p><p class="text-emerald-100/45 text-xs mt-1">Ссылка умирает после проверки — повторно не воспользоваться</p></div>
                     </div>
                 </div>
             </section>
@@ -229,11 +229,11 @@
                         </div>
                         <ul class="grid sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                             <li class="flex gap-3"><i class="ph ph-timer text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Одноразовые ссылки: TTL 10 минут, удаление после загрузки скана</span></li>
-                            <li class="flex gap-3"><i class="ph ph-lock-key text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Конфиг внутри exe и payload зашифрованы AES-256-GCM</span></li>
+                            <li class="flex gap-3"><i class="ph ph-lock-key text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Результат передаётся в зашифрованном виде — подделать его нельзя</span></li>
                             <li class="flex gap-3"><i class="ph ph-password text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Пароль игрока — и при скачивании, и при запуске сканера</span></li>
-                            <li class="flex gap-3"><i class="ph ph-gauge text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Rate-limit 10 запросов в минуту на скачивание и загрузку</span></li>
-                            <li class="flex gap-3"><i class="ph ph-incognito text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Случайное имя файла <span class="mono text-xs text-emerald-200/40">cl_xxxxxxxx.exe</span> против сигнатур AV</span></li>
-                            <li class="flex gap-3"><i class="ph ph-users-three text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Двухконтурный доступ: глобальный уровень + точечный canScan</span></li>
+                            <li class="flex gap-3"><i class="ph ph-gauge text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Защита от подбора: ограничение частоты запросов</span></li>
+                            <li class="flex gap-3"><i class="ph ph-incognito text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Каждый файл уникален и собирается под конкретную проверку</span></li>
+                            <li class="flex gap-3"><i class="ph ph-users-three text-emerald-300 mt-0.5"></i><span class="text-emerald-50/75">Гибкий доступ: вы сами решаете, кто из админов создаёт проверки</span></li>
                         </ul>
                     </div>
                 </div>
@@ -257,7 +257,7 @@
                     <i class="ph ph-clover text-emerald-300"></i>
                     Clover Scan · Fear Project
                 </p>
-                <p class="text-emerald-200/35 text-xs mono">clover.exe · Windows x64 · AES-256-GCM</p>
+                <p class="text-emerald-200/35 text-xs mono">clover.exe · Windows x64 · одноразовые ссылки</p>
             </div>
         </footer>
     </div>
