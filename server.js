@@ -338,18 +338,38 @@ async function servePage(req, res, parsedUrl) {
 
 async function main() {
     await db.initSchema();
-    // Первый пользователь — супер-админ (уровень 5)
-    const seed = await db.seedAdmin();
-    if (seed) {
-        await db.createUser({
-            username: seed.username,
-            password: seed.password,
-            displayName: seed.username,
-            level: 5
-        });
-        console.log('[clover] создан первый пользователь (уровень 5):');
-        console.log('[clover]   логин:  ' + seed.username);
-        console.log('[clover]   пароль: ' + seed.password + (process.env.ADMIN_PASSWORD ? '' : '  ← СМЕНИТЕ: задайте ADMIN_USERNAME/ADMIN_PASSWORD'));
+
+    // Админ из окружения: если заданы ADMIN_USERNAME + ADMIN_PASSWORD, такой
+    // пользователь ГАРАНТИРОВАННО существует с этим паролем и уровнем 5 —
+    // работает и на существующей базе: пароль синхронизируется при каждом
+    // старте, сессии этого пользователя сбрасываются.
+    const envUser = (process.env.ADMIN_USERNAME || '').trim();
+    const envPass = process.env.ADMIN_PASSWORD || '';
+    if (envUser && envPass) {
+        const existing = await db.getUserByUsername(envUser);
+        if (existing) {
+            await db.setUserPassword(existing.id, envPass);
+            await db.deleteUserSessions(existing.id);
+            if (Number(existing.level) !== 5) await db.updateUser(existing.id, { level: 5 });
+            console.log('[clover] админ из .env: пароль синхронизирован для ' + envUser);
+        } else {
+            await db.createUser({ username: envUser, password: envPass, displayName: envUser, level: 5 });
+            console.log('[clover] создан админ из .env (уровень 5): ' + envUser);
+        }
+    } else {
+        // Без переменных окружения — старое поведение: admin/admin только на пустой базе.
+        const seed = await db.seedAdmin();
+        if (seed) {
+            await db.createUser({
+                username: seed.username,
+                password: seed.password,
+                displayName: seed.username,
+                level: 5
+            });
+            console.log('[clover] создан первый пользователь (уровень 5):');
+            console.log('[clover]   логин:  ' + seed.username);
+            console.log('[clover]   пароль: ' + seed.password + (process.env.ADMIN_PASSWORD ? '' : '  ← СМЕНИТЕ: задайте ADMIN_USERNAME/ADMIN_PASSWORD в .env'));
+        }
     }
 
     await scans.init();
