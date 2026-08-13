@@ -6,8 +6,8 @@
  *   npm install
  *   npm start          → http://localhost:3000
  *
- * Страницы:  / (лендинг) · /auth (вход) · /scans (админка) · /scan (игрок)
- * API:       /api/login · /api/logout · /api/me · /api/scans/*
+ * Страницы:  / (лендинг) · /auth (вход) · /scans (сканы) · /admin (ур.5) · /scan (игрок)
+ * API:       /api/login · /api/logout · /api/me · /api/scans/* · /api/users/* · /api/stats
  */
 
 const http = require('http');
@@ -164,6 +164,127 @@ async function handleAuth(req, res, parsedUrl) {
     return false;
 }
 
+// ─── Admin API (управление пользователями — только уровень 5) ───────────────
+
+const USERNAME_RE = /^[a-zA-Z0-9_.-]{2,32}$/;
+const MIN_PASSWORD_LEN = 4;
+
+async function handleAdmin(req, res, parsedUrl) {
+    const p = parsedUrl.pathname;
+
+    // Сводка для дашборда админки
+    if (p === '/api/stats' && req.method === 'GET') {
+        const session = await requireSession(req, res, 5);
+        if (!session) return true;
+        sendJson(res, 200, {
+            users: await db.countUsers(),
+            scans: await db.countScanRecords(),
+            links: scans.listLinks().length
+        });
+        return true;
+    }
+
+    if (p === '/api/users' && req.method === 'GET') {
+        const session = await requireSession(req, res, 5);
+        if (!session) return true;
+        sendJson(res, 200, { users: await db.listUsers() });
+        return true;
+    }
+
+    if (p === '/api/users' && req.method === 'POST') {
+        const session = await requireSession(req, res, 5);
+        if (!session) return true;
+        let body;
+        try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
+        const username = String(body.username || '').trim();
+        const password = String(body.password || '');
+        const level = Number(body.level) || 1;
+        if (!USERNAME_RE.test(username)) return sendError(res, 400, 'BAD_USERNAME', 'Логин: 2–32 символа, латиница, цифры, . _ -'), true;
+        if (password.length < MIN_PASSWORD_LEN) return sendError(res, 400, 'BAD_PASSWORD', 'Пароль минимум ' + MIN_PASSWORD_LEN + ' символа'), true;
+        if (level < 1 || level > 5) return sendError(res, 400, 'BAD_LEVEL', 'Уровень должен быть 1..5'), true;
+        if (await db.getUserByUsername(username)) return sendError(res, 409, 'USER_EXISTS', 'Такой логин уже занят'), true;
+        const user = await db.createUser({
+            username, password,
+            displayName: String(body.displayName || username).trim().slice(0, 64) || username,
+            level, canScan: Boolean(body.canScan)
+        });
+        safeLog(session, 'admin_user_create', null, username, 'level=' + level + ' canScan=' + Boolean(body.canScan));
+        sendJson(res, 200, { user });
+        return true;
+    }
+
+    // /api/users/:id  ·  /api/users/:id/password  ·  /api/users/:id/kick
+    const mUser = p.match(/^\/api\/users\/([a-f0-9]{8,16})(\/password|\/kick)?$/);
+    if (mUser && ['PUT', 'POST', 'DELETE'].includes(req.method)) {
+        const session = await requireSession(req, res, 5);
+        if (!session) return true;
+        const id = mUser[1];
+        const action = mUser[2] || '';
+        const target = await db.getUserById(id);
+        if (!target) return sendError(res, 404, 'NOT_FOUND', 'Пользователь не найден'), true;
+
+        // Обновление: имя / уровень / доступ к сканам
+        if (req.method === 'PUT' && !action) {
+            let body;
+            try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
+            if (id === session.userId && body.level !== undefined && Number(body.level) < 5) {
+                return sendError(res, 400, 'SELF_DEMOTE', 'Нельзя понизить собственный уровень'), true;
+            }
+            if (target.level >= 5 && body.level !== undefined && Number(body.level) < 5 && await db.countUsers(5) <= 1) {
+                return sendError(res, 400, 'LAST_SUPER', 'Это последний пользователь уровня 5'), true;
+            }
+            const patch = {};
+            if (body.displayName !== undefined) patch.displayName = String(body.displayName).trim().slice(0, 64);
+            if (body.level !== undefined) {
+                const lvl = Number(body.level);
+                if (lvl < 1 || lvl > 5) return sendError(res, 400, 'BAD_LEVEL', 'Уровень должен быть 1..5'), true;
+                patch.level = lvl;
+            }
+            if (body.canScan !== undefined) patch.canScan = Boolean(body.canScan);
+            const user = await db.updateUser(id, patch);
+            safeLog(session, 'admin_user_update', null, target.username, JSON.stringify(patch));
+            sendJson(res, 200, { user });
+            return true;
+        }
+
+        // Сброс пароля (+ выброс из всех сессий)
+        if (req.method === 'POST' && action === '/password') {
+            let body;
+            try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
+            const password = String(body.password || '');
+            if (password.length < MIN_PASSWORD_LEN) return sendError(res, 400, 'BAD_PASSWORD', 'Пароль минимум ' + MIN_PASSWORD_LEN + ' символа'), true;
+            await db.setUserPassword(id, password);
+            await db.deleteUserSessions(id);
+            safeLog(session, 'admin_user_password', null, target.username, '');
+            sendJson(res, 200, { ok: true });
+            return true;
+        }
+
+        // Завершить все сессии пользователя
+        if (req.method === 'POST' && action === '/kick') {
+            if (id === session.userId) return sendError(res, 400, 'SELF_KICK', 'Нельзя завершить собственные сессии'), true;
+            await db.deleteUserSessions(id);
+            safeLog(session, 'admin_user_kick', null, target.username, '');
+            sendJson(res, 200, { ok: true });
+            return true;
+        }
+
+        // Удаление
+        if (req.method === 'DELETE' && !action) {
+            if (id === session.userId) return sendError(res, 400, 'SELF_DELETE', 'Нельзя удалить самого себя'), true;
+            if (target.level >= 5 && await db.countUsers(5) <= 1) {
+                return sendError(res, 400, 'LAST_SUPER', 'Это последний пользователь уровня 5'), true;
+            }
+            await db.deleteUser(id);
+            safeLog(session, 'admin_user_delete', null, target.username, '');
+            sendJson(res, 200, { ok: true });
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // ─── Статика и страницы ─────────────────────────────────────────────────────
 
 function serveFile(res, absPath) {
@@ -188,8 +309,16 @@ async function servePage(req, res, parsedUrl) {
         return serveFile(res, path.join(PUBLIC_DIR, 'scans.html'));
     }
 
-    // Публичные статические файлы (js, images)
-    if (p.startsWith('/js/') || p.startsWith('/images/')) {
+    // Админ-панель (пользователи): только уровень 5
+    if (p === '/admin') {
+        const session = await getSessionFromReq(req);
+        if (!session) return redirect(res, '/auth?next=/admin');
+        if ((session.level || 0) < 5) return redirect(res, '/scans');
+        return serveFile(res, path.join(PUBLIC_DIR, 'admin.html'));
+    }
+
+    // Публичные статические файлы (js, css, images)
+    if (p.startsWith('/js/') || p.startsWith('/css/') || p.startsWith('/images/')) {
         const rel = decodeURIComponent(p).replace(/^[/\\]+/, '');
         const abs = path.join(PUBLIC_DIR, rel);
         if (!abs.startsWith(PUBLIC_DIR)) return sendError(res, 403, 'FORBIDDEN', 'Недопустимый путь');
@@ -228,6 +357,7 @@ async function main() {
             }
             if (parsedUrl.pathname.startsWith('/api/')) {
                 if (await handleAuth(req, res, parsedUrl)) return;
+                if (await handleAdmin(req, res, parsedUrl)) return;
                 return sendError(res, 404, 'NOT_FOUND', 'Endpoint не найден');
             }
             if (req.method === 'GET' || req.method === 'HEAD') {
@@ -244,7 +374,8 @@ async function main() {
         console.log('[clover] сервис запущен: http://localhost:' + PORT);
         console.log('[clover]   /       — лендинг');
         console.log('[clover]   /auth   — вход');
-        console.log('[clover]   /scans  — админка (нужен вход)');
+        console.log('[clover]   /scans  — сканы (нужен вход)');
+        console.log('[clover]   /admin  — админ-панель (уровень 5)');
         console.log('[clover]   /scan   — страница игрока');
         console.log('[clover] БД: data/clover.db (SQLite)');
     });

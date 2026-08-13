@@ -13,6 +13,8 @@
  *   getSetting / setSetting / getUserById
  * Плюс auth: getUserByUsername, createUser, checkCredentials,
  *            createSession, getSessionByToken, deleteSession, seedAdmin, initSchema.
+ * Плюс админка (/admin): listUsers, updateUser, setUserPassword, deleteUser,
+ *            countUsers, countScanRecords, deleteUserSessions.
  */
 
 const fs = require('fs');
@@ -39,7 +41,8 @@ if (USE_PG) {
     const Database = require('better-sqlite3');
     const DATA_DIR = path.join(__dirname, '..', 'data');
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    const db = new Database(path.join(DATA_DIR, 'clover.db'));
+    // CLOVER_DB_PATH — необязательный путь к файлу БД (по умолчанию data/clover.db)
+    const db = new Database(process.env.CLOVER_DB_PATH || path.join(DATA_DIR, 'clover.db'));
     db.pragma('journal_mode = WAL');
     sql = {
         all: async (t, p = []) => db.prepare(t).all(...p),
@@ -230,6 +233,52 @@ async function createUser({ username, password, displayName, level, canScan }) {
     return getUserById(id);
 }
 
+async function listUsers() {
+    const rows = await sql.all(`
+        SELECT u.*,
+               (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS active_sessions
+        FROM users u ORDER BY u.created_at ASC
+    `, [Date.now()]);
+    return rows.map(r => ({
+        ...publicUser(r),
+        createdAt: Number(r.created_at) || 0,
+        activeSessions: Number(r.active_sessions) || 0
+    }));
+}
+
+async function updateUser(id, patch) {
+    const sets = [];
+    const params = [];
+    if (patch.displayName !== undefined) { sets.push('display_name = ?'); params.push(String(patch.displayName)); }
+    if (patch.level !== undefined) { sets.push('level = ?'); params.push(Number(patch.level) || 1); }
+    if (patch.canScan !== undefined) { sets.push('can_scan = ?'); params.push(patch.canScan ? 1 : 0); }
+    if (!sets.length) return getUserById(id);
+    params.push(String(id));
+    await sql.run('UPDATE users SET ' + sets.join(', ') + ' WHERE id = ?', params);
+    return getUserById(id);
+}
+
+async function setUserPassword(id, password) {
+    await sql.run('UPDATE users SET password_hash = ? WHERE id = ?', [hashPassword(password), String(id)]);
+}
+
+async function deleteUser(id) {
+    await sql.run('DELETE FROM sessions WHERE user_id = ?', [String(id)]);
+    await sql.run('DELETE FROM users WHERE id = ?', [String(id)]);
+}
+
+async function countUsers(level) {
+    const row = level !== undefined
+        ? await sql.get('SELECT COUNT(*) AS c FROM users WHERE level = ?', [Number(level)])
+        : await sql.get('SELECT COUNT(*) AS c FROM users');
+    return Number(row.c);
+}
+
+async function countScanRecords() {
+    const row = await sql.get('SELECT COUNT(*) AS c FROM scans');
+    return Number(row.c);
+}
+
 async function checkCredentials(username, password) {
     const row = await sql.get('SELECT * FROM users WHERE username = ?', [String(username)]);
     if (!row || !verifyPassword(password, row.password_hash)) return null;
@@ -266,6 +315,10 @@ async function deleteSession(token) {
     await sql.run('DELETE FROM sessions WHERE token = ?', [String(token)]);
 }
 
+async function deleteUserSessions(userId) {
+    await sql.run('DELETE FROM sessions WHERE user_id = ?', [String(userId)]);
+}
+
 // ─── Seed ───────────────────────────────────────────────────────────────────
 
 async function seedAdmin() {
@@ -279,9 +332,10 @@ async function seedAdmin() {
 
 module.exports = {
     initSchema,
-    saveScanRecord, getScanRecord, listScanRecords, searchScanRecords,
+    saveScanRecord, getScanRecord, listScanRecords, searchScanRecords, countScanRecords,
     getSetting, setSetting,
     getUserById, getUserByUsername, createUser, checkCredentials, hashPassword,
-    createSession, getSessionByToken, deleteSession,
+    listUsers, updateUser, setUserPassword, deleteUser, countUsers,
+    createSession, getSessionByToken, deleteSession, deleteUserSessions,
     seedAdmin
 };

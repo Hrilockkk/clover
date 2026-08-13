@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -8,48 +8,28 @@
     <meta name="description" content="Clover Scan — система проверки игроков: одноразовая ссылка, автоматическая проверка ПК и готовый отчёт в панели.">
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/clover.css">
     <style>
-        body { font-family: 'Inter', sans-serif; color: #e7f8ef; background: #04110b;
-            background-image:
-                radial-gradient(ellipse 80% 60% at 70% -10%, rgba(52,211,153,0.16), transparent 60%),
-                radial-gradient(ellipse 60% 50% at 10% 110%, rgba(163,230,53,0.08), transparent 60%);
-            background-attachment: fixed; }
-        .glass { background: linear-gradient(160deg, rgba(52,211,153,0.10), rgba(52,211,153,0.03));
-            border: 1px solid rgba(110,231,183,0.22); backdrop-filter: blur(14px);
-            box-shadow: 0 12px 40px rgba(0,0,0,0.35); border-radius: 20px; }
-        .clover-field {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='10' y='30' font-size='26' fill='rgba(110,231,183,0.05)'%3E%E2%98%98%3C/text%3E%3Ctext x='70' y='90' font-size='20' fill='rgba(163,230,53,0.04)'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
-        }
-        body { scrollbar-width: thin; scrollbar-color: rgba(110,231,183,0.2) transparent; }
-        body::-webkit-scrollbar { width: 8px; }
-        body::-webkit-scrollbar-thumb { background: rgba(110,231,183,0.2); border-radius: 4px; }
-        .tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; }
-        .tag-em { background: rgba(52,211,153,0.16); color: #6ee7b7; border: 1px solid rgba(110,231,183,0.25); }
-        .tag-lime { background: rgba(163,230,53,0.14); color: #bef264; border: 1px solid rgba(163,230,53,0.25); }
-        .tag-red { background: rgba(244,63,94,0.16); color: #fda4af; border: 1px solid rgba(244,63,94,0.25); }
-        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; border-radius: 14px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; border: none; text-decoration: none; }
-        .btn-primary { background: linear-gradient(135deg, #34d399, #a3e635); color: #05240f; font-weight: 700; }
-        .btn-primary:hover { filter: brightness(1.1); }
-        .btn-glass { background: rgba(110,231,183,0.08); border: 1px solid rgba(110,231,183,0.3); color: #a7f3d0; }
-        .btn-glass:hover { background: rgba(110,231,183,0.16); color: #d1fae5; }
-        .mono { font-family: 'Cascadia Code', 'Consolas', monospace; }
-        .th { color: rgba(167,243,208,0.4); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
-        .card-hover { transition: border-color 0.15s, transform 0.15s; }
-        .card-hover:hover { border-color: rgba(163,230,53,0.45); transform: translateY(-2px); }
-        :focus-visible { outline: 2px solid #34d399; outline-offset: 2px; border-radius: 6px; }
-        @media (prefers-reduced-motion: reduce) { .card-hover:hover { transform: none; } }
+        .hero-title { font-family: 'Unbounded', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+        .mock-row { animation: row-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .mock-row:nth-child(2) { animation-delay: 0.35s; }
+        .mock-row:nth-child(3) { animation-delay: 0.5s; }
+        .mock-row:nth-child(4) { animation-delay: 0.65s; }
+        @keyframes row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { .mock-row { animation: none; } }
     </style>
 </head>
 <body class="clover-field">
+    <div class="scanline"></div>
     <div class="relative min-h-screen flex flex-col">
         <!-- Header -->
         <header class="max-w-[1280px] w-full mx-auto px-6 pt-6 flex items-center justify-between">
             <a href="/" class="flex items-center gap-3 group">
-                <span class="glass inline-flex items-center justify-center w-10 h-10 !rounded-2xl">
+                <span class="radar-badge">
                     <i class="ph ph-clover text-xl text-emerald-300"></i>
                 </span>
-                <span class="font-bold text-white tracking-tight">Clover <span class="text-emerald-200/40 font-medium">/ Fear Project</span></span>
+                <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
             </a>
             <nav class="flex items-center gap-2">
                 <a href="/scans" class="btn btn-glass"><i class="ph ph-list-checks"></i><span class="hidden sm:inline">Сканы</span></a>
@@ -62,7 +42,7 @@
             <section class="pt-12 pb-14 grid lg:grid-cols-[1fr_1.4fr] gap-10 items-center">
                 <div>
                     <span class="tag tag-em mb-5"><i class="ph ph-clover"></i>Clover Scan · система проверки игроков</span>
-                    <h1 class="text-4xl sm:text-5xl font-extrabold text-white leading-tight tracking-tight mb-5">
+                    <h1 class="hero-title text-3xl sm:text-[2.6rem] text-white leading-[1.15] mb-5">
                         Проверьте ПК игрока<br>
                         <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-lime-300">за один запуск</span>
                     </h1>
@@ -85,7 +65,7 @@
                 <!-- Мок админки -->
                 <div class="glass overflow-hidden" aria-label="Пример отчёта в панели">
                     <div class="flex items-center gap-3 px-5 py-4 border-b border-emerald-300/15">
-                        <i class="ph ph-clover text-emerald-300"></i>
+                        <span class="radar-badge !w-7 !h-7 !rounded-lg"><i class="ph ph-clover text-sm text-emerald-300"></i></span>
                         <span class="text-white font-bold text-sm">Сканы Clover</span>
                         <div class="hidden sm:flex gap-1.5 ml-4">
                             <span class="tag tag-lime">Ссылки</span>
@@ -99,19 +79,19 @@
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 pb-2 border-b border-emerald-300/10">
                                 <span class="th">Проверка</span><span class="th">Дата</span><span class="th">Длит.</span><span class="th">Итог</span>
                             </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
+                            <div class="mock-row grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
                                 <span class="text-white text-sm font-semibold">vasya</span>
                                 <span class="mono text-emerald-100/60 text-xs">сегодня 14:22</span>
                                 <span class="mono text-emerald-100/60 text-xs">48 c</span>
                                 <span class="tag tag-red">находки</span>
                             </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
+                            <div class="mock-row grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
                                 <span class="text-white text-sm font-semibold">kio</span>
                                 <span class="mono text-emerald-100/60 text-xs">сегодня 13:05</span>
                                 <span class="mono text-emerald-100/60 text-xs">51 c</span>
                                 <span class="tag tag-em">чисто</span>
                             </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3">
+                            <div class="mock-row grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3">
                                 <span class="text-white text-sm font-semibold">m4k</span>
                                 <span class="mono text-emerald-100/60 text-xs">вчера 21:40</span>
                                 <span class="mono text-emerald-100/60 text-xs">47 c</span>
@@ -128,7 +108,7 @@
             <!-- Как это работает -->
             <section class="pb-16">
                 <div class="mb-8">
-                    <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <h2 class="font-display text-xl sm:text-2xl font-semibold text-white mb-2 flex items-center gap-3">
                         <i class="ph ph-git-branch text-emerald-300"></i>Как это работает
                     </h2>
                     <p class="text-emerald-100/50 text-sm">От ссылки до отчёта — четыре шага, всё остальное Clover делает сам.</p>
@@ -172,7 +152,7 @@
             <!-- Что умеет Clover -->
             <section class="pb-16">
                 <div class="mb-8">
-                    <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <h2 class="font-display text-xl sm:text-2xl font-semibold text-white mb-2 flex items-center gap-3">
                         <i class="ph ph-magnifying-glass text-emerald-300"></i>Что умеет Clover
                     </h2>
                     <p class="text-emerald-100/50 text-sm">Функции проверки — от запуска до готового результата в панели.</p>
@@ -222,7 +202,7 @@
                 <div class="glass p-8">
                     <div class="grid lg:grid-cols-[1fr_2fr] gap-8 items-start">
                         <div>
-                            <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                            <h2 class="font-display text-xl sm:text-2xl font-semibold text-white mb-2 flex items-center gap-3">
                                 <i class="ph ph-shield-check text-lime-300"></i>Ссылка не живёт дольше проверки
                             </h2>
                             <p class="text-emerald-100/50 text-sm leading-relaxed">Подделать результат или переиспользовать ссылку нельзя — защита встроена на каждом шаге.</p>
@@ -241,7 +221,7 @@
 
             <!-- CTA -->
             <section class="pb-24 text-center">
-                <h2 class="text-3xl font-bold text-white mb-3">Готовы проверить игрока?</h2>
+                <h2 class="font-display text-2xl sm:text-3xl font-semibold text-white mb-3">Готовы проверить игрока?</h2>
                 <p class="text-emerald-100/50 text-sm mb-8">Создайте ссылку — она перестанет существовать раньше, чем вы успеете заскучать.</p>
                 <div class="flex flex-wrap justify-center gap-3">
                     <a href="/scans" class="btn btn-primary"><i class="ph ph-plus-circle"></i>Создать проверку</a>

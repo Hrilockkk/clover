@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Админ-панель — Clover · Fear Project</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/clover.css">
+</head>
+<body class="clover-field">
+    <div class="scanline"></div>
+    <div class="relative min-h-screen p-6 max-w-[1280px] mx-auto">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-10">
+            <a href="/" class="flex items-center gap-3">
+                <span class="radar-badge"><i class="ph ph-clover text-xl text-emerald-300"></i></span>
+                <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
+            </a>
+            <div class="flex items-center gap-2">
+                <span id="userBadge" class="text-sm text-emerald-100/50 mr-2"></span>
+                <a href="/scans" class="nav-link"><i class="ph ph-list-checks"></i><span class="hidden sm:inline">Сканы</span></a>
+                <a href="/admin" class="nav-link nav-active"><i class="ph ph-shield-star"></i><span class="hidden sm:inline">Админка</span></a>
+                <button onclick="logout()" class="nav-link" title="Выйти из панели">
+                    <i class="ph ph-sign-out"></i><span class="hidden sm:inline">Выйти</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Title -->
+        <div class="mb-8">
+            <h1 class="font-display text-2xl sm:text-3xl font-semibold text-white mb-2 flex items-center gap-3">
+                <i class="ph ph-shield-star text-emerald-300"></i>
+                Админ-панель
+            </h1>
+            <p class="text-emerald-100/50 text-sm">Пользователи, уровни доступа и пароли — управление панелью Clover</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
+                <span class="radar-badge"><i class="ph ph-users-three text-lg text-emerald-300"></i></span>
+                <div><p id="statUsers" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Пользователей</p></div>
+            </div>
+            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
+                <span class="radar-badge"><i class="ph ph-clipboard-text text-lg text-emerald-300"></i></span>
+                <div><p id="statScans" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Сканов в базе</p></div>
+            </div>
+            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
+                <span class="radar-badge"><i class="ph ph-link-simple text-lg text-emerald-300"></i></span>
+                <div><p id="statLinks" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Активных ссылок</p></div>
+            </div>
+        </div>
+
+        <!-- Create user -->
+        <div class="glass-panel rounded-2xl p-6 mb-8">
+            <h2 class="font-display text-base font-semibold text-white mb-5 flex items-center gap-2">
+                <i class="ph ph-user-plus text-emerald-300"></i>
+                Создать пользователя
+            </h2>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                <div>
+                    <label for="newUsername" class="block text-xs text-emerald-100/40 mb-1.5">Логин *</label>
+                    <input type="text" id="newUsername" placeholder="vasya" class="w-full" autocomplete="off">
+                </div>
+                <div>
+                    <label for="newPassword" class="block text-xs text-emerald-100/40 mb-1.5">Пароль *</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="newPassword" placeholder="минимум 4 символа" class="flex-1 mono" autocomplete="off">
+                        <button onclick="fillGenerated('newPassword')" class="btn btn-ghost btn-icon" title="Сгенерировать пароль"><i class="ph ph-dice-five"></i></button>
+                    </div>
+                </div>
+                <div>
+                    <label for="newDisplayName" class="block text-xs text-emerald-100/40 mb-1.5">Имя (отображается)</label>
+                    <input type="text" id="newDisplayName" placeholder="Vasya" class="w-full" autocomplete="off">
+                </div>
+                <div>
+                    <label for="newLevel" class="block text-xs text-emerald-100/40 mb-1.5">Уровень доступа</label>
+                    <select id="newLevel" class="w-full">
+                        <option value="1">1 — Мл. модер</option>
+                        <option value="2">2 — Модер</option>
+                        <option value="3">3 — СТМ/СТА</option>
+                        <option value="4" selected>4 — ГА</option>
+                        <option value="5">5 — Супер</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+                <label class="flex items-center gap-3 cursor-pointer select-none">
+                    <span class="switch"><input type="checkbox" id="newCanScan"><span class="track"></span></span>
+                    <span class="text-sm text-emerald-50/75">Разрешить сканы <span class="text-emerald-100/35">(точечный доступ к /scans)</span></span>
+                </label>
+                <button onclick="createUser()" class="btn btn-primary ml-auto">
+                    <i class="ph ph-plus-circle"></i>
+                    Создать
+                </button>
+            </div>
+        </div>
+
+        <!-- Users -->
+        <div class="glass-panel rounded-2xl p-6">
+            <h2 class="font-display text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <i class="ph ph-users text-emerald-300"></i>
+                Пользователи
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-emerald-300/15">
+                            <th class="text-left py-3 px-3">Пользователь</th>
+                            <th class="text-left py-3 px-3">Уровень</th>
+                            <th class="text-left py-3 px-3">Сканы</th>
+                            <th class="text-left py-3 px-3">Сессии</th>
+                            <th class="text-left py-3 px-3">Создан</th>
+                            <th class="text-left py-3 px-3">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="passwordModal" class="hidden modal-backdrop" onclick="if(event.target===this)closePasswordModal()">
+        <div class="glass-panel rounded-2xl p-6 max-w-md w-full mx-4">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="font-display text-lg font-semibold text-white flex items-center gap-2"><i class="ph ph-key text-amber-400"></i>Сброс пароля</h2>
+                <button onclick="closePasswordModal()" class="text-emerald-100/50 hover:text-white"><i class="ph ph-x text-xl"></i></button>
+            </div>
+            <p class="text-emerald-100/50 text-sm mb-4">Новый пароль для <span id="pwTargetName" class="text-white font-semibold"></span>. Все активные сессии пользователя будут завершены.</p>
+            <div class="flex gap-2 mb-5">
+                <input type="text" id="pwInput" class="flex-1 mono" placeholder="Новый пароль" autocomplete="off">
+                <button onclick="fillGenerated('pwInput')" class="btn btn-ghost btn-icon" title="Сгенерировать"><i class="ph ph-dice-five"></i></button>
+            </div>
+            <div class="flex gap-3 justify-end">
+                <button onclick="closePasswordModal()" class="btn btn-ghost">Отмена</button>
+                <button onclick="savePassword()" class="btn btn-primary"><i class="ph ph-check"></i>Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="deleteModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeDeleteModal()">
+        <div class="glass-panel rounded-2xl p-6 max-w-md w-full mx-4">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="font-display text-lg font-semibold text-white flex items-center gap-2"><i class="ph ph-trash text-rose-400"></i>Удалить пользователя</h2>
+                <button onclick="closeDeleteModal()" class="text-emerald-100/50 hover:text-white"><i class="ph ph-x text-xl"></i></button>
+            </div>
+            <p class="text-emerald-100/50 text-sm mb-6">Пользователь <span id="delTargetName" class="text-white font-semibold"></span> будет удалён вместе со всеми сессиями. Действие необратимо.</p>
+            <div class="flex gap-3 justify-end">
+                <button onclick="closeDeleteModal()" class="btn btn-ghost">Отмена</button>
+                <button onclick="confirmDelete()" class="btn btn-red"><i class="ph ph-trash"></i>Удалить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/js/session.js"></script>
+    <script>
+        let currentUser = {};
+        let users = [];
+        let pwTargetId = null;
+        let delTargetId = null;
+
+        const LEVEL_NAMES = { 1: 'Мл. модер', 2: 'Модер', 3: 'СТМ/СТА', 4: 'ГА', 5: 'Супер' };
+
+        function toast(msg, type) {
+            const el = document.createElement('div');
+            el.className = 'toast-item toast-' + (type || 'success');
+            el.textContent = msg;
+            document.getElementById('toast').appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+        function authHeaders() {
+            const u = JSON.parse(localStorage.getItem('user') || '{}');
+            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+        }
+
+        async function logout() {
+            try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch (_) {}
+            localStorage.removeItem('user');
+            window.location.href = '/auth';
+        }
+
+        function fmtDate(s) {
+            if (!s) return '—';
+            try { return new Date(s).toLocaleDateString(); } catch (_) { return '—'; }
+        }
+
+        // Пароль: без неоднозначных символов (0/O, 1/I/l), 10 знаков
+        function generatePassword() {
+            const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+            const buf = new Uint8Array(10);
+            crypto.getRandomValues(buf);
+            return Array.from(buf, b => alphabet[b % alphabet.length]).join('');
+        }
+
+        function fillGenerated(inputId) {
+            const input = document.getElementById(inputId);
+            input.value = generatePassword();
+            input.select();
+        }
+
+        // ─── Init ──────────────────────────────────────────────
+        (async () => {
+            try {
+                const u = JSON.parse(localStorage.getItem('user') || '{}');
+                if (!u.sessionToken) { window.location.href = '/auth?next=/admin'; return; }
+                const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + u.sessionToken } });
+                if (!res.ok) { window.location.href = '/auth?next=/admin'; return; }
+                currentUser = await res.json();
+                if ((currentUser.level || 0) < 5) { window.location.href = '/scans'; return; }
+                document.getElementById('userBadge').textContent = (currentUser.displayName || currentUser.username || '') + ' · ур.' + (currentUser.level || 0);
+                await Promise.all([loadStats(), loadUsers()]);
+            } catch (e) {
+                window.location.href = '/auth?next=/admin';
+            }
+        })();
+
+        // ─── Stats ─────────────────────────────────────────────
+        async function loadStats() {
+            const res = await fetch('/api/stats', { headers: authHeaders() });
+            if (!res.ok) return;
+            const s = await res.json();
+            document.getElementById('statUsers').textContent = s.users;
+            document.getElementById('statScans').textContent = s.scans;
+            document.getElementById('statLinks').textContent = s.links;
+        }
+
+        // ─── Create ────────────────────────────────────────────
+        async function createUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value;
+            const displayName = document.getElementById('newDisplayName').value.trim();
+            const level = parseInt(document.getElementById('newLevel').value);
+            const canScan = document.getElementById('newCanScan').checked;
+            if (!username) { toast('Введите логин', 'error'); return; }
+            if (password.length < 4) { toast('Пароль минимум 4 символа', 'error'); return; }
+            const res = await fetch('/api/users', {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ username, password, displayName, level, canScan })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); return; }
+            toast('Пользователь ' + username + ' создан');
+            document.getElementById('newUsername').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('newDisplayName').value = '';
+            document.getElementById('newCanScan').checked = false;
+            await Promise.all([loadStats(), loadUsers()]);
+        }
+
+        // ─── List / render ─────────────────────────────────────
+        async function loadUsers() {
+            const res = await fetch('/api/users', { headers: authHeaders() });
+            if (!res.ok) { toast('Ошибка загрузки: ' + res.status, 'error'); return; }
+            users = (await res.json()).users || [];
+            renderUsers();
+        }
+
+        function levelTag(lvl) {
+            if (lvl >= 5) return 'tag-red';
+            if (lvl >= 4) return 'tag-amber';
+            if (lvl >= 3) return 'tag-lime';
+            return 'tag-green';
+        }
+
+        function renderUsers() {
+            const body = document.getElementById('usersBody');
+            if (!users.length) { body.innerHTML = '<tr><td colspan="6" class="text-center text-emerald-100/40 py-10">Пока никого нет — создайте первого пользователя выше</td></tr>'; return; }
+            body.innerHTML = users.map(u => {
+                const isSelf = u.id === currentUser.id;
+                const initial = (u.displayName || u.username || '?').trim().charAt(0) || '?';
+                const levelOptions = Object.entries(LEVEL_NAMES).map(([v, name]) =>
+                    `<option value="${v}" ${Number(v) === u.level ? 'selected' : ''}>${v} — ${name}</option>`).join('');
+                return `
+                <tr class="border-b border-emerald-300/10">
+                    <td class="py-3 px-3">
+                        <div class="flex items-center gap-3">
+                            <span class="avatar">${esc(initial)}</span>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" value="${esc(u.displayName)}" maxlength="64"
+                                        onchange="updateUser('${u.id}', { displayName: this.value })"
+                                        class="!bg-transparent !border-transparent hover:!border-emerald-300/25 focus:!border-emerald-300/50 !py-0.5 !px-2 w-36 font-semibold text-white">
+                                    ${isSelf ? '<span class="tag tag-lime">вы</span>' : ''}
+                                </div>
+                                <span class="mono text-xs text-emerald-100/40 pl-2">@${esc(u.username)}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-3">
+                        <div class="flex items-center gap-2">
+                            <span class="tag ${levelTag(u.level)}">${esc(LEVEL_NAMES[u.level] || u.level)}</span>
+                            <select onchange="updateUser('${u.id}', { level: parseInt(this.value) })" ${isSelf ? 'disabled title="Нельзя менять свой уровень"' : ''}
+                                class="!py-1 !px-2 text-xs">${levelOptions}</select>
+                        </div>
+                    </td>
+                    <td class="py-3 px-3">
+                        <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                            <span class="switch"><input type="checkbox" ${u.canScan ? 'checked' : ''} onchange="updateUser('${u.id}', { canScan: this.checked })"><span class="track"></span></span>
+                            <span class="text-xs ${u.canScan ? 'text-emerald-300' : 'text-emerald-100/35'}">${u.canScan ? 'разрешены' : 'запрещены'}</span>
+                        </label>
+                    </td>
+                    <td class="py-3 px-3">
+                        ${u.activeSessions > 0 ? `<span class="tag tag-green">${u.activeSessions}</span>` : '<span class="text-emerald-100/30 text-xs">нет</span>'}
+                    </td>
+                    <td class="py-3 px-3 text-emerald-100/40 text-xs">${fmtDate(u.createdAt)}</td>
+                    <td class="py-3 px-3">
+                        <div class="flex gap-2">
+                            <button onclick="openPasswordModal('${u.id}')" class="btn btn-ghost btn-icon" title="Сбросить пароль"><i class="ph ph-key"></i></button>
+                            <button onclick="kickUser('${u.id}')" class="btn btn-ghost btn-icon" title="Завершить все сессии" ${isSelf ? 'disabled' : ''}><i class="ph ph-sign-out"></i></button>
+                            <button onclick="openDeleteModal('${u.id}')" class="btn btn-red btn-icon" title="Удалить" ${isSelf ? 'disabled' : ''}><i class="ph ph-trash"></i></button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ─── Update ────────────────────────────────────────────
+        async function updateUser(id, patch) {
+            const res = await fetch('/api/users/' + id, {
+                method: 'PUT', headers: authHeaders(), body: JSON.stringify(patch)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); await loadUsers(); return; }
+            toast('Сохранено');
+            await loadUsers();
+        }
+
+        // ─── Password ──────────────────────────────────────────
+        function openPasswordModal(id) {
+            pwTargetId = id;
+            const u = users.find(x => x.id === id);
+            document.getElementById('pwTargetName').textContent = u ? (u.displayName + ' (@' + u.username + ')') : id;
+            document.getElementById('pwInput').value = generatePassword();
+            document.getElementById('passwordModal').classList.remove('hidden');
+        }
+
+        function closePasswordModal() {
+            pwTargetId = null;
+            document.getElementById('passwordModal').classList.add('hidden');
+        }
+
+        async function savePassword() {
+            if (!pwTargetId) return;
+            const password = document.getElementById('pwInput').value;
+            if (password.length < 4) { toast('Пароль минимум 4 символа', 'error'); return; }
+            const res = await fetch('/api/users/' + pwTargetId + '/password', {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify({ password })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); return; }
+            toast('Пароль обновлён, сессии завершены');
+            closePasswordModal();
+            await loadUsers();
+        }
+
+        // ─── Kick ──────────────────────────────────────────────
+        async function kickUser(id) {
+            const res = await fetch('/api/users/' + id + '/kick', { method: 'POST', headers: authHeaders() });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); return; }
+            toast('Сессии пользователя завершены');
+            await loadUsers();
+        }
+
+        // ─── Delete ────────────────────────────────────────────
+        function openDeleteModal(id) {
+            delTargetId = id;
+            const u = users.find(x => x.id === id);
+            document.getElementById('delTargetName').textContent = u ? (u.displayName + ' (@' + u.username + ')') : id;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            delTargetId = null;
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        async function confirmDelete() {
+            if (!delTargetId) return;
+            const res = await fetch('/api/users/' + delTargetId, { method: 'DELETE', headers: authHeaders() });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); closeDeleteModal(); return; }
+            toast('Пользователь удалён');
+            closeDeleteModal();
+            await Promise.all([loadStats(), loadUsers()]);
+        }
+    </script>
+</body>
+</html>
