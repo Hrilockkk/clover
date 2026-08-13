@@ -15,7 +15,6 @@
  *       scans,                                   // модуль backend/scans.js
  *       db,                                      // ваш DB-слой (см. scans.sql)
  *       getSessionFromReq,                       // async (req) => session | null
- *       requireSession,                          // async (req, res, minLevel) => session | null
  *       sendJson: (res, code, obj) => { ... },   // JSON-ответ
  *       sendError: (res, code, errCode, msg) => { ... },
  *       getClientIp: (req) => string,
@@ -34,15 +33,12 @@
  * Для Express: app.use('/api/scans', (req, res) => handleScans(req, res, new URL(req.originalUrl, 'http://x')));
  *
  * Ожидания от session-объекта: { userId, username, displayName, level }.
- * Ожидания от db: getUserById(id) -> { canScan }, getSetting/setSetting (через scans.js),
- *                 saveScanRecord/getScanRecord/listScanRecords/searchScanRecords.
+ * Ожидания от db (через scans.js): saveScanRecord/getScanRecord/listScanRecords/searchScanRecords.
  */
 
 const crypto = require('crypto');
 
-const USER_LEVEL_ADMIN = 4;
-const USER_LEVEL_SUPER = 5;
-const MAX_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MB
+const MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024; // 8 MB — расширенный payload сканера (префетч, shimcache, bam, процессы, драйверы)
 
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
@@ -79,28 +75,18 @@ function getOrigin(req) {
 module.exports = function createScansHandler(deps) {
     const {
         scans,
-        db,
         getSessionFromReq,
-        requireSession,
         sendJson,
         sendError,
         getClientIp,
         safeLog = () => {}
     } = deps;
 
-    // Доступ: пользователь должен иметь canScan=true (per-user toggle «Разрешить сканы»)
-    //         ИЛИ level >= scans_min_level (глобальная настройка, по умолчанию 4).
+    // Доступ: любой авторизованный пользователь панели (есть в списке админов).
     async function requireScanAccess(req, res) {
         const session = await getSessionFromReq(req);
         if (!session) {
             sendError(res, 401, 'UNAUTHORIZED', 'Требуется авторизация');
-            return null;
-        }
-        const user = await db.getUserById(session.userId);
-        const minLevel = await scans.getScansMinLevel(db);
-        const allowed = Boolean(user && user.canScan) || session.level >= minLevel;
-        if (!allowed) {
-            sendError(res, 403, 'FORBIDDEN', 'Нет доступа к сканам (нужно разрешение «Разрешить сканы»)');
             return null;
         }
         return session;
@@ -132,7 +118,7 @@ module.exports = function createScansHandler(deps) {
         if (parsedUrl.pathname === '/api/scans/links' && req.method === 'GET') {
             const session = await requireScanAccess(req, res);
             if (!session) return true;
-            sendJson(res, 200, { links: scans.listLinks(), minLevel: await scans.getScansMinLevel(db) });
+            sendJson(res, 200, { links: scans.listLinks() });
             return true;
         }
         if (parsedUrl.pathname === '/api/scans/links' && req.method === 'POST') {
@@ -192,23 +178,29 @@ module.exports = function createScansHandler(deps) {
             sendJson(res, 200, rec);
             return true;
         }
-        // Настройки: минимальный уровень доступа к /scans (менять может только уровень 5)
-        if (parsedUrl.pathname === '/api/scans/level' && req.method === 'GET') {
-            const session = await requireSession(req, res, USER_LEVEL_ADMIN);
+        // Сигнатуры сканера (страница «Сигнатуры»): читать могут все
+        // пользователи панели, менять — только уровень 5.
+        if (parsedUrl.pathname === '/api/scans/signatures' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
             if (!session) return true;
-            sendJson(res, 200, { minLevel: await scans.getScansMinLevel(db) });
+            sendJson(res, 200, { signatures: await scans.getSignatures(), defaults: scans.DEFAULT_SIGNATURES });
             return true;
         }
-        if (parsedUrl.pathname === '/api/scans/level' && req.method === 'POST') {
-            const session = await requireSession(req, res, USER_LEVEL_SUPER);
+        if (parsedUrl.pathname === '/api/scans/signatures' && req.method === 'PUT') {
+            const session = await requireScanAccess(req, res);
             if (!session) return true;
+            if ((session.level || 0) < 5) {
+                sendError(res, 403, 'FORBIDDEN', 'Менять сигнатуры может только уровень 5');
+                return true;
+            }
             const body = await readJsonBody(req);
             try {
-                const lvl = await scans.setScansMinLevel(db, body.minLevel);
-                safeLog(session, 'scan_level_update', null, null, 'minLevel=' + lvl);
-                sendJson(res, 200, { minLevel: lvl });
+                const clean = await scans.setSignatures(body.signatures !== undefined ? body.signatures : body);
+                safeLog(session, 'signatures_update', null, null,
+                    'rules=' + (clean.rules ? clean.rules.length : 0));
+                sendJson(res, 200, { signatures: clean });
             } catch (e) {
-                sendError(res, 400, 'BAD_LEVEL', String(e.message || e));
+                sendError(res, 400, 'BAD_SIGNATURES', String(e.message || e));
             }
             return true;
         }
@@ -230,7 +222,7 @@ module.exports = function createScansHandler(deps) {
             const origin = getOrigin(req);
             let buf;
             try {
-                buf = scans.buildEmbeddedScanner(id, origin);
+                buf = await scans.buildEmbeddedScanner(id, origin);
             } catch (e) {
                 sendError(res, 404, 'NOT_AVAILABLE', String(e.message || e));
                 return true;
@@ -262,7 +254,7 @@ module.exports = function createScansHandler(deps) {
             const origin = getOrigin(req);
             let buf;
             try {
-                buf = scans.buildEmbeddedScanner(id, origin);
+                buf = await scans.buildEmbeddedScanner(id, origin);
             } catch (e) {
                 sendError(res, 404, 'NOT_AVAILABLE', String(e.message || e));
                 return true;

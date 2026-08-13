@@ -6,7 +6,7 @@
  *   npm install
  *   npm start          → http://localhost:3000
  *
- * Страницы:  / (лендинг) · /auth (вход) · /scans (сканы) · /admin (ур.5) · /scan (игрок)
+ * Страницы:  / (лендинг) · /auth (вход) · /scans (сканы) · /signatures (сигнатуры) · /admin (ур.5) · /scan (игрок)
  * API:       /api/login · /api/logout · /api/me · /api/scans/* · /api/users/* · /api/stats
  */
 
@@ -206,9 +206,9 @@ async function handleAdmin(req, res, parsedUrl) {
         const user = await db.createUser({
             username, password,
             displayName: String(body.displayName || username).trim().slice(0, 64) || username,
-            level, canScan: Boolean(body.canScan)
+            level
         });
-        safeLog(session, 'admin_user_create', null, username, 'level=' + level + ' canScan=' + Boolean(body.canScan));
+        safeLog(session, 'admin_user_create', null, username, 'level=' + level);
         sendJson(res, 200, { user });
         return true;
     }
@@ -223,7 +223,7 @@ async function handleAdmin(req, res, parsedUrl) {
         const target = await db.getUserById(id);
         if (!target) return sendError(res, 404, 'NOT_FOUND', 'Пользователь не найден'), true;
 
-        // Обновление: имя / уровень / доступ к сканам
+        // Обновление: имя / уровень
         if (req.method === 'PUT' && !action) {
             let body;
             try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
@@ -240,7 +240,6 @@ async function handleAdmin(req, res, parsedUrl) {
                 if (lvl < 1 || lvl > 5) return sendError(res, 400, 'BAD_LEVEL', 'Уровень должен быть 1..5'), true;
                 patch.level = lvl;
             }
-            if (body.canScan !== undefined) patch.canScan = Boolean(body.canScan);
             const user = await db.updateUser(id, patch);
             safeLog(session, 'admin_user_update', null, target.username, JSON.stringify(patch));
             sendJson(res, 200, { user });
@@ -309,6 +308,13 @@ async function servePage(req, res, parsedUrl) {
         return serveFile(res, path.join(PUBLIC_DIR, 'scans.html'));
     }
 
+    // Сигнатуры сканера: просмотр всем пользователям панели, запись — ур. 5 (в API)
+    if (p === '/signatures') {
+        const session = await getSessionFromReq(req);
+        if (!session) return redirect(res, '/auth?next=/signatures');
+        return serveFile(res, path.join(PUBLIC_DIR, 'signatures.html'));
+    }
+
     // Админ-панель (пользователи): только уровень 5
     if (p === '/admin') {
         const session = await getSessionFromReq(req);
@@ -339,8 +345,7 @@ async function main() {
             username: seed.username,
             password: seed.password,
             displayName: seed.username,
-            level: 5,
-            canScan: true
+            level: 5
         });
         console.log('[clover] создан первый пользователь (уровень 5):');
         console.log('[clover]   логин:  ' + seed.username);

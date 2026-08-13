@@ -30,8 +30,8 @@ const usnReasonFileDelete = 0x00000200
 
 // ScanOptions tunes raw-MFT and deleted-file scanning limits.
 type ScanOptions struct {
-	MaxRecords           int64
-	BatchSize            int
+	MaxRecords            int64
+	BatchSize             int
 	MaxDeletedContentSize int64
 	MaxDeletedSearchSize  int64
 }
@@ -144,18 +144,23 @@ func applyMFTFixup(data []byte, bytesPerSector uint16) bool {
 	}
 	usOffset := binary.LittleEndian.Uint16(data[0x04:])
 	usSize := binary.LittleEndian.Uint16(data[0x06:])
-	if int(usOffset) >= len(data) || usSize < 1 {
+	// usSize == 1 means USN only (no sector tails) — nothing to fix up.
+	if usSize < 1 || int(usOffset)+int(usSize)*2 > len(data) {
 		return false
 	}
+	usn := data[usOffset : usOffset+2]
 	for i := uint16(1); i < usSize; i++ {
 		pos := int(i)*int(bytesPerSector) - 2
 		if pos < 0 || pos+2 > len(data) {
-			continue
-		}
-		fixOffset := int(usOffset) + int(i)*2
-		if fixOffset+2 > len(data) {
 			return false
 		}
+		// The trailing bytes of every sector must equal the update sequence
+		// number; a mismatch means a stale/corrupt record — refuse to "fix"
+		// it, otherwise we would silently corrupt the buffer.
+		if data[pos] != usn[0] || data[pos+1] != usn[1] {
+			return false
+		}
+		fixOffset := int(usOffset) + int(i)*2
 		data[pos] = data[fixOffset]
 		data[pos+1] = data[fixOffset+1]
 	}
@@ -182,6 +187,7 @@ func ParseMFTRecord(data []byte, b *models.NTFSBootSector) (*models.MFTParsedRec
 		MFTRecordNum: uint64(recNum),
 	}
 
+	bestNs := -1
 	offset := int(firstAttr)
 	for offset < len(data)-8 {
 		attrType := binary.LittleEndian.Uint32(data[offset:])
@@ -197,7 +203,7 @@ func ParseMFTRecord(data []byte, b *models.NTFSBootSector) (*models.MFTParsedRec
 		case 0x10: // $STANDARD_INFORMATION
 			parseStandardInfo(data[offset:offset+int(attrLen)], res)
 		case 0x30: // $FILE_NAME
-			parseFileNameAttr(data[offset:offset+int(attrLen)], res)
+			parseFileNameAttr(data[offset:offset+int(attrLen)], res, &bestNs)
 		case 0x80: // $DATA
 			parseDataAttr(data[offset:offset+int(attrLen)], res)
 		}
@@ -232,6 +238,7 @@ func parseMFTRecordFast(data []byte, b *models.NTFSBootSector) (*models.MFTParse
 		MFTRecordNum: uint64(recNum),
 	}
 
+	bestNs := -1
 	offset := int(firstAttr)
 	for offset < len(data)-8 {
 		attrType := binary.LittleEndian.Uint32(data[offset:])
@@ -243,9 +250,13 @@ func parseMFTRecordFast(data []byte, b *models.NTFSBootSector) (*models.MFTParse
 			break
 		}
 
-		if attrType == 0x30 { // $FILE_NAME — first one is enough for indexing
-			parseFileNameAttr(data[offset:offset+int(attrLen)], res)
-			break
+		if attrType == 0x30 { // $FILE_NAME
+			parseFileNameAttr(data[offset:offset+int(attrLen)], res, &bestNs)
+			if bestNs >= fileNameNamespaceScore(1) {
+				// Win32 (or Win32&DOS) name captured — good enough for
+				// indexing, stop scanning attributes.
+				break
+			}
 		}
 		offset += int(attrLen)
 	}
@@ -272,7 +283,23 @@ func parseStandardInfo(data []byte, res *models.MFTParsedRecord) {
 	})
 }
 
-func parseFileNameAttr(data []byte, res *models.MFTParsedRecord) {
+// fileNameNamespaceScore ranks $FILE_NAME namespaces: a record can carry
+// several names (POSIX/Win32/DOS 8.3); we always prefer the Win32 one,
+// otherwise paths would surface as short DOS aliases (e.g. "CHEAT~1.EXE").
+func fileNameNamespaceScore(ns byte) int {
+	switch ns {
+	case 3: // Win32 & DOS
+		return 4
+	case 1: // Win32
+		return 3
+	case 0: // POSIX
+		return 2
+	default: // 2 = DOS
+		return 1
+	}
+}
+
+func parseFileNameAttr(data []byte, res *models.MFTParsedRecord, bestNs *int) {
 	if len(data) < 0x42 || data[0x08] != 0 {
 		return
 	}
@@ -281,14 +308,22 @@ func parseFileNameAttr(data []byte, res *models.MFTParsedRecord) {
 		return
 	}
 	v := data[valOff:]
-	res.ParentFRN = binary.LittleEndian.Uint64(v[0x00:])
-	res.Size = int64(binary.LittleEndian.Uint64(v[0x30:]))
+	score := fileNameNamespaceScore(v[0x41])
+	if bestNs != nil && score <= *bestNs {
+		return // a better (Win32) name is already stored
+	}
 
 	nameLen := int(v[0x40])
 	if nameLen == 0 || int(valOff)+0x42+nameLen*2 > len(data) {
 		return
 	}
+
+	res.ParentFRN = binary.LittleEndian.Uint64(v[0x00:])
+	res.Size = int64(binary.LittleEndian.Uint64(v[0x30:]))
 	res.Name = utils.DecodeUTF16(v[0x42 : 0x42+nameLen*2])
+	if bestNs != nil {
+		*bestNs = score
+	}
 }
 
 func parseDataAttr(data []byte, res *models.MFTParsedRecord) {
@@ -299,21 +334,17 @@ func parseDataAttr(data []byte, res *models.MFTParsedRecord) {
 	nameOff := binary.LittleEndian.Uint16(data[0x0A:])
 	var attrName string
 	if nameLen > 0 && int(nameOff)+nameLen*2 <= len(data) {
-		attrName = utils.DecodeUTF16(data[nameOff : uint16(int(nameOff)+nameLen*2)])
+		attrName = utils.DecodeUTF16(data[nameOff:uint16(int(nameOff)+nameLen*2)])
 	}
 
 	if data[0x08] == 0 {
-		// Resident
+		// Resident: only the unnamed $DATA stream is kept; named streams (ADS)
+		// are skipped — nothing consumes them downstream.
 		valOff := int(binary.LittleEndian.Uint16(data[0x14:]))
 		valLen := int(binary.LittleEndian.Uint32(data[0x10:]))
-		if valOff+valLen <= len(data) {
-			adsData := make([]byte, valLen)
-			copy(adsData, data[valOff:valOff+valLen])
-			if attrName != "" {
-				res.ADS = append(res.ADS, models.ADSStream{Name: attrName, Data: adsData})
-			} else {
-				res.ResidentData = adsData
-			}
+		if attrName == "" && valOff+valLen <= len(data) {
+			res.ResidentData = make([]byte, valLen)
+			copy(res.ResidentData, data[valOff:valOff+valLen])
 		}
 	} else {
 		// Non-resident
@@ -514,13 +545,13 @@ func ScanDeletedViaRawMFT(drive string, resolver *PathResolver, rules []models.S
 				filePath = drive + "\\" + rec.Name
 			}
 
-		contentToSearch := rec.ResidentData
-		if contentToSearch == nil && rec.HasNonResident && len(rec.Runlist) > 0 && rec.Size <= opts.MaxDeletedSearchSize {
-			contentToSearch = ReadRunlistData(h, rec.Runlist, clusterSize)
-		}
-		if int64(len(contentToSearch)) > opts.MaxDeletedContentSize {
-			contentToSearch = contentToSearch[:opts.MaxDeletedContentSize]
-		}
+			contentToSearch := rec.ResidentData
+			if contentToSearch == nil && rec.HasNonResident && len(rec.Runlist) > 0 && rec.Size <= opts.MaxDeletedSearchSize {
+				contentToSearch = ReadRunlistData(h, rec.Runlist, clusterSize)
+			}
+			if int64(len(contentToSearch)) > opts.MaxDeletedContentSize {
+				contentToSearch = contentToSearch[:opts.MaxDeletedContentSize]
+			}
 
 			matched := ""
 			if len(contentToSearch) > 0 {
@@ -528,14 +559,12 @@ func ScanDeletedViaRawMFT(drive string, resolver *PathResolver, rules []models.S
 					if r.CheckPath {
 						continue
 					}
-					if bytes.Contains(contentToSearch, []byte(r.Pattern)) {
+					if len(r.PatternBytes) > 0 && bytes.Contains(contentToSearch, r.PatternBytes) {
 						matched = r.Pattern
 						break
 					}
 					if r.UTF16 {
-						le := utils.ToUTF16LE(r.Pattern)
-						be := utils.ToUTF16BE(r.Pattern)
-						if bytes.Contains(contentToSearch, le) || bytes.Contains(contentToSearch, be) {
+						if bytes.Contains(contentToSearch, r.UTF16LE) || bytes.Contains(contentToSearch, r.UTF16BE) {
 							matched = r.Pattern
 							break
 						}
@@ -547,11 +576,8 @@ func ScanDeletedViaRawMFT(drive string, resolver *PathResolver, rules []models.S
 				matched = "DELETED_RAW_MFT"
 			}
 
-			deletedTime := rec.ModifiedTime
-			if deletedTime.IsZero() {
-				deletedTime = time.Now()
-			}
-
+			// A zero ModifiedTime stays zero: substituting time.Now() would
+			// present a made-up deletion time in the report.
 			foundFiles = append(foundFiles, models.FileInfo{
 				Path:       filePath,
 				Name:       rec.Name,
@@ -559,7 +585,7 @@ func ScanDeletedViaRawMFT(drive string, resolver *PathResolver, rules []models.S
 				Attributes: "DELETED",
 				Matched:    matched,
 				Modified:   rec.ModifiedTime,
-				Deleted:    deletedTime,
+				Deleted:    rec.ModifiedTime,
 			})
 			found++
 		}
@@ -802,11 +828,8 @@ sequential:
 			matched = "DELETED_RAW_MFT"
 		}
 
-		deletedTime := rec.ModifiedTime
-		if deletedTime.IsZero() {
-			deletedTime = time.Now()
-		}
-
+		// A zero ModifiedTime stays zero: substituting time.Now() would
+		// present a made-up deletion time in the report.
 		deletedFiles = append(deletedFiles, models.FileInfo{
 			Path:       filePath,
 			Name:       rec.Name,
@@ -814,7 +837,7 @@ sequential:
 			Attributes: "DELETED",
 			Matched:    matched,
 			Modified:   rec.ModifiedTime,
-			Deleted:    deletedTime,
+			Deleted:    rec.ModifiedTime,
 		})
 	}
 
@@ -869,8 +892,10 @@ sequential:
 	}, nil
 }
 
-// ScanDeletedViaUSN reads the USN journal for deletion records.
-func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.SearchRule, targetDirNames []string) (foundFiles []models.FileInfo, foundDirs []models.DeletedDirInfo, err error) {
+// ScanDeletedViaUSN reads the USN journal for deletion records. Deleted .exe
+// entries older than windowHours are skipped (they are usually long gone from
+// the MFT slack as well); 0 disables the time filter.
+func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.SearchRule, targetDirNames []string, windowHours int) (foundFiles []models.FileInfo, foundDirs []models.DeletedDirInfo, err error) {
 	h, err := winapi.OpenVolumeHandle(drive)
 	if err != nil {
 		return nil, nil, err
@@ -891,14 +916,17 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 		UsnJournalID:      journal.UsnJournalID,
 	}
 
-		buffer := make([]byte, 1<<20)
+	buffer := make([]byte, 1<<20)
 	fileCount := 0
 	pfCount := 0
 	dirCount := 0
 	usnRecords := 0
 	lastReport := time.Now()
 	reportInterval := 3 * time.Second
-	hourAgo := time.Now().Add(-time.Hour)
+	windowStart := time.Time{}
+	if windowHours > 0 {
+		windowStart = time.Now().Add(-time.Duration(windowHours) * time.Hour)
+	}
 
 	for {
 		var bytesReturned uint32
@@ -973,7 +1001,7 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 					}
 
 					if isExe {
-						if (!matchesRules && !matchesSuspiciousDir) || deletedAt.Before(hourAgo) {
+						if (!matchesRules && !matchesSuspiciousDir) || (!windowStart.IsZero() && deletedAt.Before(windowStart)) {
 							offset += rec.RecordLength
 							if usnRecords%50000 == 0 || time.Since(lastReport) > reportInterval {
 								lastReport = time.Now()
@@ -1218,6 +1246,10 @@ func IndexDriveFiles(root string) []string {
 			name := entry.Name()
 			path := filepath.Join(dir, name)
 			if entry.IsDir() {
+				// Skip junctions/symlinks: they can form cycles.
+				if winapi.IsReparsePoint(entry) {
+					continue
+				}
 				stack = append(stack, path)
 				continue
 			}

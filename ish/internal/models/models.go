@@ -1,7 +1,6 @@
 package models
 
 import (
-	"os"
 	"time"
 
 	mmap "github.com/edsrzf/mmap-go"
@@ -9,12 +8,12 @@ import (
 
 // SearchRule defines a pattern-based search with optional size range.
 type SearchRule struct {
-	Min       int64
-	Max       int64
-	Pattern   string
-	UTF16     bool
-	CheckPath bool
-	SHA256    string
+	Min       int64  `json:"min"`
+	Max       int64  `json:"max"`
+	Pattern   string `json:"pattern,omitempty"`
+	UTF16     bool   `json:"utf16,omitempty"`
+	CheckPath bool   `json:"checkPath,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
 	// Compiled caches for performance (ignored in JSON).
 	PatternBytes []byte `json:"-"`
 	PatternLower string `json:"-"`
@@ -22,25 +21,15 @@ type SearchRule struct {
 	UTF16BE      []byte `json:"-"`
 }
 
-// ADSStream holds a single NTFS Alternate Data Stream.
-type ADSStream struct {
-	Name string
-	Data []byte `json:"-"`
-}
-
 // FileInfo is the primary match result.
 type FileInfo struct {
-	Path         string
-	Name         string
-	Size         int64
-	Attributes   string
-	Matched      string
-	Modified     time.Time
-	Deleted      time.Time
-	ADS          []ADSStream
-	ADSMatched   string
-	ADSHostURL   string
-	ADSReferrerURL string
+	Path       string
+	Name       string
+	Size       int64
+	Attributes string
+	Matched    string
+	Modified   time.Time
+	Deleted    time.Time
 }
 
 // DirInfo describes a matched directory.
@@ -87,19 +76,14 @@ type FileCandidate struct {
 	Path string
 	Name string
 	Size int64
-	Mode os.FileMode
 	Mod  time.Time
 }
 
 // MappedFile holds an mmap'd file with its cleanup callback.
 type MappedFile struct {
-	Candidate      FileCandidate
-	Data           mmap.MMap
-	ADS            []ADSStream
-	ADSMatched     string
-	ADSHostURL     string
-	ADSReferrerURL string
-	Close          func()
+	Candidate FileCandidate
+	Data      mmap.MMap
+	Close     func()
 }
 
 // MFTNode stores a single NTFS MFT entry for path resolution.
@@ -122,7 +106,6 @@ type MFTParsedRecord struct {
 	HasNonResident bool
 	Runlist        []byte
 	MFTRecordNum   uint64
-	ADS            []ADSStream
 }
 
 // NTFSBootSector is the parsed BPB from an NTFS volume.
@@ -151,11 +134,11 @@ type AppDataFinding struct {
 
 // AmcacheFinding is a matching executable found in Amcache.hve.
 type AmcacheFinding struct {
-	Name       string
-	Path       string
-	LastRun    time.Time
-	FileID     string
-	ProgramID  string
+	Name      string
+	Path      string
+	LastRun   time.Time
+	FileID    string
+	ProgramID string
 }
 
 // CS2Connection is an established TCP connection owned by cs2.exe.
@@ -178,8 +161,8 @@ type CS2RWXRegion struct {
 
 // RAMModule describes a single physical memory stick.
 type RAMModule struct {
-	CapacityMB  uint64
-	Speed       uint32
+	CapacityMB   uint64
+	Speed        uint32
 	Manufacturer string
 }
 
@@ -207,23 +190,23 @@ type DiskHardwareInfo struct {
 
 // HardwareInfo holds all collected hardware identifiers for fingerprinting.
 type HardwareInfo struct {
-	Hostname     string `json:"hostname"`
-	Username     string `json:"username"`
-	OSVersion    string `json:"osVersion"`
-	MachineGuid  string `json:"machineGuid"`
+	Hostname    string `json:"hostname"`
+	Username    string `json:"username"`
+	OSVersion   string `json:"osVersion"`
+	MachineGuid string `json:"machineGuid"`
 
-	CPUName      string `json:"cpuName"`
-	CPUID        string `json:"cpuId"`
+	CPUName string `json:"cpuName"`
+	CPUID   string `json:"cpuId"`
 
 	BoardVendor  string `json:"boardVendor"`
 	BoardProduct string `json:"boardProduct"`
 	BoardSerial  string `json:"boardSerial"`
 
-	GPUName      string `json:"gpuName"`
-	GPUUID       string `json:"gpuUid"`
+	GPUName string `json:"gpuName"`
+	GPUUID  string `json:"gpuUid"`
 
-	RAM          []RAMModule       `json:"ram"`
-	Disks        []DiskHardwareInfo `json:"disks"`
+	RAM   []RAMModule        `json:"ram"`
+	Disks []DiskHardwareInfo `json:"disks"`
 
 	SystemSerial string `json:"systemSerial"`
 	BIOSVersion  string `json:"biosVersion"`
@@ -235,15 +218,61 @@ type HardwareInfo struct {
 
 // SteamAccount holds a single Steam account found in loginusers.vdf.
 type SteamAccount struct {
-	SteamID    string `json:"steamId"`
+	SteamID     string `json:"steamId"`
 	AccountName string `json:"accountName"`
-	MostRecent bool   `json:"mostRecent"`
-	Timestamp  string `json:"timestamp"`
+	MostRecent  bool   `json:"mostRecent"`
+	Timestamp   string `json:"timestamp"`
 }
 
 // SteamInfo holds Steam installation and account information.
 type SteamInfo struct {
-	SteamPath    string        `json:"steamPath"`
+	SteamPath    string         `json:"steamPath"`
 	Accounts     []SteamAccount `json:"accounts"`
-	LibraryPaths []string      `json:"libraryPaths"`
+	LibraryPaths []string       `json:"libraryPaths"`
+}
+
+// PrefetchEntry describes one Prefetch .pf file (program launch trace).
+// Modified ≈ last launch time of the program.
+type PrefetchEntry struct {
+	Name     string    `json:"name"` // program name, e.g. "EXLOADER.EXE"
+	Path     string    `json:"path"`
+	Size     int64     `json:"size"`
+	Created  time.Time `json:"created,omitempty"`
+	Modified time.Time `json:"modified,omitempty"`
+	Matched  string    `json:"matched,omitempty"`
+}
+
+// ShimcacheEntry is one AppCompatCache (ShimCache) record: a program path
+// that was seen by the Windows process-creation shim.
+type ShimcacheEntry struct {
+	Path     string    `json:"path"`
+	Modified time.Time `json:"modified,omitempty"`
+	Executed bool      `json:"executed,omitempty"`
+	Matched  string    `json:"matched,omitempty"`
+}
+
+// BamEntry is one BAM/DAM record: per-user program launch with timestamp.
+type BamEntry struct {
+	Source  string    `json:"source"` // "bam" | "dam"
+	UserSID string    `json:"userSid"`
+	Path    string    `json:"path"`
+	LastRun time.Time `json:"lastRun"`
+	Matched string    `json:"matched,omitempty"`
+}
+
+// ProcessEntry is one running process from the Toolhelp32 snapshot.
+type ProcessEntry struct {
+	PID     uint32 `json:"pid"`
+	Name    string `json:"name"`
+	Path    string `json:"path,omitempty"`
+	Matched string `json:"matched,omitempty"`
+}
+
+// DriverEntry is one installed kernel driver / service from the registry.
+type DriverEntry struct {
+	Name        string    `json:"name"`
+	ImagePath   string    `json:"imagePath"`
+	Kind        string    `json:"kind"` // "kernel" | "fs" | "service"
+	KeyModified time.Time `json:"keyModified,omitempty"`
+	Flag        string    `json:"flag,omitempty"` // "blacklist" | "recent"
 }

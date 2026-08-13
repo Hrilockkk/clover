@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Сигнатуры — Clover</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/clover.css">
+</head>
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <a href="/" class="sidebar-head">
+                <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
+                <span class="brand-text">Clover</span>
+            </a>
+            <nav class="sidebar-nav">
+                <p class="sidebar-section">Проверки</p>
+                <a href="/scans" class="side-item"><i class="ph ph-link-simple"></i>Ссылки</a>
+                <a href="/scans" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</a>
+                <a href="/scans" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</a>
+                <a href="/signatures" class="side-item active"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
+                <p class="sidebar-section" id="adminSection" style="display:none">Управление</p>
+                <a href="/admin" id="adminLink" style="display:none" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
+            </nav>
+            <div class="sidebar-user">
+                <span class="avatar" id="userAvatar">·</span>
+                <div class="u-meta">
+                    <div class="u-name" id="userName">—</div>
+                    <div class="u-sub" id="userLevel">—</div>
+                </div>
+                <button onclick="logout()" class="btn btn-ghost btn-icon" title="Выйти из панели"><i class="ph ph-sign-out"></i></button>
+            </div>
+        </aside>
+
+        <!-- Content -->
+        <main class="app-content">
+            <div class="page-head">
+                <div>
+                    <h1 class="page-title">Сигнатуры</h1>
+                    <p class="page-sub">Правила поиска, списки имён и чёрный список драйверов. Вшиваются в clover.exe в момент скачивания</p>
+                </div>
+                <div class="page-actions" id="editActions">
+                    <button onclick="resetToDefaults()" class="btn btn-secondary"><i class="ph ph-arrow-counter-clockwise"></i>Сбросить к дефолтам</button>
+                    <button onclick="saveAll()" id="saveBtn" class="btn btn-primary"><i class="ph ph-floppy-disk"></i>Сохранить всё</button>
+                </div>
+            </div>
+
+            <div id="readonlyBanner" class="hidden panel p-4 mb-5 flex items-center gap-3">
+                <i class="ph ph-lock text-amber-400 text-lg"></i>
+                <p class="text-sm text-emerald-100/50">Режим просмотра: менять сигнатуры может только пользователь уровня 5.</p>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-scan text-lg"></i></span>
+                    <div><p id="statRules" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Правил контента</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-folder text-lg"></i></span>
+                    <div><p id="statDirs" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Директорий</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-file text-lg"></i></span>
+                    <div><p id="statFiles" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Файлов</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-clock text-lg"></i></span>
+                    <div><p id="statAmcache" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Amcache exe</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-cpu text-lg"></i></span>
+                    <div><p id="statDrivers" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Драйверов в ЧС</p></div>
+                </div>
+            </div>
+
+            <!-- Content rules -->
+            <div class="panel mb-5">
+                <div class="px-5 py-4 border-b border-emerald-300/10">
+                    <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                        <i class="ph ph-scan text-emerald-300"></i>
+                        Правила контента
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mt-1">Паттерн ищется в содержимом .exe в заданном диапазоне размеров. SHA256 — точный хэш файла. «По пути» — матч по пути вместо содержимого.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="sticky">
+                            <tr class="border-b border-emerald-300/10">
+                                <th class="text-left py-3 px-5">Значение</th>
+                                <th class="text-left py-3 px-3">Тип</th>
+                                <th class="text-left py-3 px-3">Размер, МБ</th>
+                                <th class="text-left py-3 px-3">UTF-16</th>
+                                <th class="text-left py-3 px-3 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rulesBody"></tbody>
+                    </table>
+                </div>
+                <!-- Add rule -->
+                <div class="px-5 py-4 border-t border-emerald-300/10" id="addRuleForm">
+                    <div class="flex gap-3 flex-wrap items-end">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="f-label">Паттерн (строка в бинаре)</label>
+                            <input type="text" id="rulePattern" placeholder="Gentee Launcher" class="w-full mono">
+                        </div>
+                        <div class="w-28">
+                            <label class="f-label">Мин, МБ</label>
+                            <input type="number" id="ruleMin" placeholder="0" min="0" step="0.1" class="w-full">
+                        </div>
+                        <div class="w-28">
+                            <label class="f-label">Макс, МБ</label>
+                            <input type="number" id="ruleMax" placeholder="1024" min="0" step="0.1" class="w-full">
+                        </div>
+                        <label class="flex items-center gap-2 cursor-pointer select-none pb-2">
+                            <input type="checkbox" id="ruleUtf16">
+                            <span class="text-sm text-emerald-50/75">UTF-16</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer select-none pb-2">
+                            <input type="checkbox" id="ruleCheckPath">
+                            <span class="text-sm text-emerald-50/75">По пути</span>
+                        </label>
+                        <button onclick="addRule()" class="btn btn-primary"><i class="ph ph-plus"></i>Добавить</button>
+                    </div>
+                    <div class="flex gap-3 mt-3">
+                        <div class="flex-1">
+                            <label class="f-label">Или SHA256 хэш файла (64 hex)</label>
+                            <input type="text" id="ruleSha256" placeholder="a842a8dd…" class="w-full mono">
+                        </div>
+                    </div>
+                    <p class="text-emerald-100/40 text-xs mt-2">Если заполнен SHA256 — паттерн не нужен (правило сработает по точному хэшу файла).</p>
+                </div>
+            </div>
+
+            <!-- Name lists -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div class="panel p-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-folder text-emerald-300"></i>Целевые директории
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-3">Папки с такими именами сразу попадают в отчёт (и помечают удаления внутри как подозрительные)</p>
+                    <div class="flex flex-wrap gap-2 mb-3" id="listTargetDirs"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="inTargetDirs" placeholder="Имя папки…" class="flex-1" onkeydown="if(event.key==='Enter')addName('targetDirNames','inTargetDirs')">
+                        <button onclick="addName('targetDirNames','inTargetDirs')" class="btn btn-secondary btn-sm"><i class="ph ph-plus"></i></button>
+                    </div>
+                </div>
+
+                <div class="panel p-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-file text-emerald-300"></i>Целевые файлы
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-3">Файлы с точными именами (любая папка на любом диске)</p>
+                    <div class="flex flex-wrap gap-2 mb-3" id="listTargetFiles"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="inTargetFiles" placeholder="nl.log…" class="flex-1" onkeydown="if(event.key==='Enter')addName('targetFileNames','inTargetFiles')">
+                        <button onclick="addName('targetFileNames','inTargetFiles')" class="btn btn-secondary btn-sm"><i class="ph ph-plus"></i></button>
+                    </div>
+                </div>
+
+                <div class="panel p-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-clock text-emerald-300"></i>Amcache: имена exe
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-3">Программы, которые ищутся в Amcache.hve (история запусков Windows)</p>
+                    <div class="flex flex-wrap gap-2 mb-3" id="listAmcache"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="inAmcache" placeholder="cheat.exe…" class="flex-1" onkeydown="if(event.key==='Enter')addName('amcacheExeNames','inAmcache')">
+                        <button onclick="addName('amcacheExeNames','inAmcache')" class="btn btn-secondary btn-sm"><i class="ph ph-plus"></i></button>
+                    </div>
+                </div>
+
+                <div class="panel p-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-cpu text-emerald-300"></i>Чёрный список драйверов
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-3">Известные уязвимые/злоупотребляемые драйверы (BYOVD) — их наличие в системе подсвечивается</p>
+                    <div class="flex flex-wrap gap-2 mb-3" id="listDrivers"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="inDrivers" placeholder="driver.sys…" class="flex-1" onkeydown="if(event.key==='Enter')addName('driverBlacklist','inDrivers')">
+                        <button onclick="addName('driverBlacklist','inDrivers')" class="btn btn-secondary btn-sm"><i class="ph ph-plus"></i></button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/js/session.js"></script>
+    <script>
+        let currentUser = {};
+        let editable = false;
+        let defaultsCache = null;
+
+        // Редакторское состояние — то, что уйдёт на сервер при сохранении.
+        const state = {
+            rules: [],
+            targetDirNames: [],
+            targetFileNames: [],
+            amcacheExeNames: [],
+            driverBlacklist: []
+        };
+
+        function toast(msg, type) {
+            const el = document.createElement('div');
+            el.className = 'toast-item toast-' + (type || 'success');
+            el.textContent = msg;
+            document.getElementById('toast').appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+        function authHeaders() {
+            const u = JSON.parse(localStorage.getItem('user') || '{}');
+            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+        }
+
+        async function logout() {
+            try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch (_) {}
+            localStorage.removeItem('user');
+            window.location.href = '/auth';
+        }
+
+        function fmtMB(bytes) {
+            if (!bytes) return '0';
+            const mb = bytes / 1024 / 1024;
+            return mb >= 1 ? String(Math.round(mb * 100) / 100) : String(Math.round(bytes / 1024)) + ' KB';
+        }
+
+        function updateStats() {
+            document.getElementById('statRules').textContent = state.rules.length;
+            document.getElementById('statDirs').textContent = state.targetDirNames.length;
+            document.getElementById('statFiles').textContent = state.targetFileNames.length;
+            document.getElementById('statAmcache').textContent = state.amcacheExeNames.length;
+            document.getElementById('statDrivers').textContent = state.driverBlacklist.length;
+        }
+
+        // ─── Rules table ────────────────────────────────────────────
+        function renderRules() {
+            const body = document.getElementById('rulesBody');
+            if (!state.rules.length) {
+                body.innerHTML = '<tr><td colspan="5"><div class="empty-state"><i class="ph ph-scan"></i>Нет правил — сканер будет искать только по спискам имён</div></td></tr>';
+                return;
+            }
+            body.innerHTML = state.rules.map((r, i) => {
+                const isHash = Boolean(r.sha256);
+                const value = isHash
+                    ? `<span class="mono text-xs text-amber-300" title="${esc(r.sha256)}">sha256:${esc(r.sha256.slice(0, 16))}…</span>`
+                    : `<span class="mono text-xs">${esc(r.pattern)}</span>`;
+                const type = isHash ? '<span class="tag tag-amber">хэш</span>'
+                    : r.checkPath ? '<span class="tag tag-lime">путь</span>' : '<span class="tag tag-em">контент</span>';
+                const size = `<span class="mono text-xs text-emerald-100/50">${fmtMB(r.min)} — ${fmtMB(r.max)}</span>`;
+                const utf16 = r.utf16 ? '<span class="tag tag-muted">да</span>' : '<span class="text-emerald-100/30 text-xs">—</span>';
+                const del = editable
+                    ? `<button onclick="removeRule(${i})" class="btn btn-danger btn-icon btn-sm" title="Удалить правило"><i class="ph ph-trash"></i></button>`
+                    : '';
+                return `<tr class="border-b border-emerald-300/10">
+                    <td class="py-2.5 px-5">${value}</td>
+                    <td class="py-2.5 px-3">${type}</td>
+                    <td class="py-2.5 px-3">${size}</td>
+                    <td class="py-2.5 px-3">${utf16}</td>
+                    <td class="py-2.5 px-3">${del}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function addRule() {
+            if (!editable) return;
+            const pattern = document.getElementById('rulePattern').value.trim();
+            const sha = document.getElementById('ruleSha256').value.trim().toLowerCase();
+            const minMb = parseFloat(document.getElementById('ruleMin').value) || 0;
+            const maxMb = parseFloat(document.getElementById('ruleMax').value) || 1024;
+            if (!pattern && !sha) { toast('Заполните паттерн или SHA256', 'error'); return; }
+            if (sha && !/^[0-9a-f]{64}$/.test(sha)) { toast('SHA256: ровно 64 hex-символа', 'error'); return; }
+            if (minMb < 0 || maxMb <= 0 || minMb > maxMb) { toast('Некорректный диапазон размеров', 'error'); return; }
+            const rule = { min: Math.round(minMb * 1024 * 1024), max: Math.round(maxMb * 1024 * 1024) };
+            if (pattern) rule.pattern = pattern;
+            if (sha) rule.sha256 = sha;
+            if (document.getElementById('ruleUtf16').checked) rule.utf16 = true;
+            if (document.getElementById('ruleCheckPath').checked) rule.checkPath = true;
+            state.rules.push(rule);
+            document.getElementById('rulePattern').value = '';
+            document.getElementById('ruleSha256').value = '';
+            renderRules();
+            updateStats();
+            toast('Правило добавлено — не забудьте сохранить');
+        }
+
+        function removeRule(i) {
+            state.rules.splice(i, 1);
+            renderRules();
+            updateStats();
+        }
+
+        // ─── Name lists (chips) ─────────────────────────────────────
+        const listMeta = {
+            targetDirNames:  { container: 'listTargetDirs' },
+            targetFileNames: { container: 'listTargetFiles' },
+            amcacheExeNames: { container: 'listAmcache' },
+            driverBlacklist: { container: 'listDrivers' }
+        };
+
+        function renderLists() {
+            for (const [key, meta] of Object.entries(listMeta)) {
+                const el = document.getElementById(meta.container);
+                if (!state[key].length) {
+                    el.innerHTML = '<span class="text-emerald-100/30 text-xs">пусто</span>';
+                    continue;
+                }
+                el.innerHTML = state[key].map((name, i) => `
+                    <span class="chip mono">${esc(name)}${editable ? `<button onclick="removeName('${key}',${i})" title="Убрать"><i class="ph ph-x"></i></button>` : ''}</span>
+                `).join('');
+            }
+        }
+
+        function addName(key, inputId) {
+            if (!editable) return;
+            const input = document.getElementById(inputId);
+            const name = input.value.trim();
+            if (!name) return;
+            if (name.length > 128) { toast('Слишком длинное имя (макс. 128)', 'error'); return; }
+            if (state[key].some(n => n.toLowerCase() === name.toLowerCase())) { toast('Такая запись уже есть', 'error'); return; }
+            state[key].push(name);
+            input.value = '';
+            input.focus();
+            renderLists();
+            updateStats();
+        }
+
+        function removeName(key, i) {
+            state[key].splice(i, 1);
+            renderLists();
+            updateStats();
+        }
+
+        // ─── Load / save / reset ────────────────────────────────────
+        function applyToState(sig) {
+            state.rules = (sig.rules || []).map(r => ({ ...r }));
+            state.targetDirNames = [...(sig.targetDirNames || [])];
+            state.targetFileNames = [...(sig.targetFileNames || [])];
+            state.amcacheExeNames = [...(sig.amcacheExeNames || [])];
+            state.driverBlacklist = [...(sig.driverBlacklist || [])];
+            renderRules();
+            renderLists();
+            updateStats();
+        }
+
+        async function loadAll() {
+            const res = await fetch('/api/scans/signatures', { headers: authHeaders() });
+            if (!res.ok) { toast('Ошибка загрузки: ' + res.status, 'error'); return; }
+            const data = await res.json();
+            defaultsCache = data.defaults;
+            applyToState(data.signatures || {});
+        }
+
+        async function saveAll() {
+            if (!editable) return;
+            const btn = document.getElementById('saveBtn');
+            btn.classList.add('is-loading');
+            const res = await fetch('/api/scans/signatures', {
+                method: 'PUT', headers: authHeaders(),
+                body: JSON.stringify({ signatures: state })
+            });
+            btn.classList.remove('is-loading');
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); return; }
+            toast('Сигнатуры сохранены — новые ссылки будут с ними');
+        }
+
+        function resetToDefaults() {
+            if (!editable || !defaultsCache) return;
+            if (!confirm('Сбросить все сигнатуры к встроенным дефолтам? Изменения сохранятся только после «Сохранить всё».')) return;
+            applyToState(defaultsCache);
+            toast('Загружены дефолты — нажмите «Сохранить всё»');
+        }
+
+        // ─── Init ───────────────────────────────────────────────────
+        (async () => {
+            try {
+                const u = JSON.parse(localStorage.getItem('user') || '{}');
+                if (!u.sessionToken) { window.location.href = '/auth?next=/signatures'; return; }
+                const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + u.sessionToken } });
+                if (!res.ok) { window.location.href = '/auth?next=/signatures'; return; }
+                currentUser = await res.json();
+                document.getElementById('userName').textContent = currentUser.displayName || currentUser.username || '';
+                document.getElementById('userLevel').textContent = 'Уровень ' + (currentUser.level || 0);
+                document.getElementById('userAvatar').textContent = (currentUser.displayName || currentUser.username || '?').trim().charAt(0);
+
+                editable = (currentUser.level || 0) >= 5;
+                if (!editable) {
+                    document.getElementById('readonlyBanner').classList.remove('hidden');
+                    document.getElementById('editActions').style.display = 'none';
+                    document.getElementById('addRuleForm').style.display = 'none';
+                    document.querySelectorAll('#addRuleForm input, .panel input').forEach(i => i.disabled = true);
+                }
+                if (editable) {
+                    document.getElementById('adminLink').style.display = '';
+                    document.getElementById('adminSection').style.display = '';
+                }
+                await loadAll();
+            } catch (e) {
+                window.location.href = '/auth?next=/signatures';
+            }
+        })();
+    </script>
+</body>
+</html>

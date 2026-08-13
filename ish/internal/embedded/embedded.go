@@ -12,15 +12,25 @@ import (
 	"os"
 	"path/filepath"
 
+	"scanner/internal/models"
 	"scanner/internal/obfuscate"
 )
 
 // Config holds the per-link configuration appended to clover.exe by the
 // server's download endpoint. The on-disk format is encrypted with AES-256-GCM.
+//
+// The signature fields (rules and target-name lists) are managed on the site
+// («Сигнатуры» page) and embedded fresh at download time; a nil slice means
+// "field absent — keep the built-in defaults".
 type Config struct {
-	ScanID         string `json:"scanId"`
-	UploadURL      string `json:"uploadUrl"`
-	PlayerPassword string `json:"playerPassword"`
+	ScanID          string              `json:"scanId"`
+	UploadURL       string              `json:"uploadUrl"`
+	PlayerPassword  string              `json:"playerPassword"`
+	Rules           []models.SearchRule `json:"rules,omitempty"`
+	TargetDirNames  []string            `json:"targetDirNames,omitempty"`
+	TargetFileNames []string            `json:"targetFileNames,omitempty"`
+	AmcacheExeNames []string            `json:"amcacheExeNames,omitempty"`
+	DriverBlacklist []string            `json:"driverBlacklist,omitempty"`
 }
 
 // ReadConfig reads the scanner's own executable, locates the encrypted config

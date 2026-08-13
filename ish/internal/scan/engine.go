@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -32,10 +33,10 @@ type Engine struct {
 	selfExePath string
 	selfExeName string
 
-	mu             sync.Mutex
-	results        []models.FileInfo
-	dirResults     []models.DirInfo
-	namedFiles     []models.NamedFileInfo
+	mu              sync.Mutex
+	results         []models.FileInfo
+	dirResults      []models.DirInfo
+	namedFiles      []models.NamedFileInfo
 	deletedFiles    []models.DeletedFileInfo
 	deletedDirs     []models.DeletedDirInfo
 	shellbags       []models.ShellbagFinding
@@ -45,6 +46,11 @@ type Engine struct {
 	cs2RWXRegions   []models.CS2RWXRegion
 	hardwareInfo    *models.HardwareInfo
 	steamInfo       *models.SteamInfo
+	prefetch        []models.PrefetchEntry
+	shimcache       []models.ShimcacheEntry
+	bamEntries      []models.BamEntry
+	processes       []models.ProcessEntry
+	drivers         []models.DriverEntry
 
 	scannedFiles    int64
 	processedFiles  int64
@@ -73,7 +79,7 @@ func (e *Engine) AppendResults(files []models.FileInfo, dirs []models.DirInfo, n
 }
 
 // Results returns the accumulated results (safe copy).
-func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirInfo, namedFiles []models.NamedFileInfo, deletedFiles []models.DeletedFileInfo, deletedDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo) {
+func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirInfo, namedFiles []models.NamedFileInfo, deletedFiles []models.DeletedFileInfo, deletedDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	results = make([]models.FileInfo, len(e.results))
@@ -96,8 +102,26 @@ func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirIn
 	copy(cs2Conns, e.cs2Connections)
 	cs2RWX = make([]models.CS2RWXRegion, len(e.cs2RWXRegions))
 	copy(cs2RWX, e.cs2RWXRegions)
-	hw = e.hardwareInfo
-	steam = e.steamInfo
+	// Copy the pointers' targets: callers must not observe later reassignment
+	// by ScanHardware/ScanSteam running concurrently.
+	if e.hardwareInfo != nil {
+		hwCopy := *e.hardwareInfo
+		hw = &hwCopy
+	}
+	if e.steamInfo != nil {
+		steamCopy := *e.steamInfo
+		steam = &steamCopy
+	}
+	prefetch = make([]models.PrefetchEntry, len(e.prefetch))
+	copy(prefetch, e.prefetch)
+	shimcache = make([]models.ShimcacheEntry, len(e.shimcache))
+	copy(shimcache, e.shimcache)
+	bam = make([]models.BamEntry, len(e.bamEntries))
+	copy(bam, e.bamEntries)
+	processes = make([]models.ProcessEntry, len(e.processes))
+	copy(processes, e.processes)
+	drivers = make([]models.DriverEntry, len(e.drivers))
+	copy(drivers, e.drivers)
 	return
 }
 
@@ -150,9 +174,9 @@ func (e *Engine) CS2RWXCount() int {
 }
 
 const (
-	cs2ANSIRed       = "\x1b[31m"
-	cs2ANSIBoldRed   = "\x1b[1;31m"
-	cs2ANSIReset     = "\x1b[0m"
+	cs2ANSIRed     = "\x1b[31m"
+	cs2ANSIBoldRed = "\x1b[1;31m"
+	cs2ANSIReset   = "\x1b[0m"
 )
 
 // ScanCS2 inspects the running cs2.exe process: enumerates its TCP remote
@@ -319,6 +343,106 @@ func (e *Engine) ScanAppDataRoaming() {
 	fmt.Fprintf(os.Stderr, "[APPDATA] Found %d AppData hits\n", len(findings))
 }
 
+// collectorTargetNames returns the union of configured name lists used to
+// flag matches inside Prefetch/ShimCache/BAM/Processes.
+func (e *Engine) collectorTargetNames() []string {
+	out := make([]string, 0, len(e.cfg.TargetDirNames)+len(e.cfg.TargetFileNames)+len(e.cfg.AmcacheExeNames))
+	out = append(out, e.cfg.TargetDirNames...)
+	out = append(out, e.cfg.TargetFileNames...)
+	out = append(out, e.cfg.AmcacheExeNames...)
+	return out
+}
+
+// ScanPrefetch collects Prefetch launch traces.
+func (e *Engine) ScanPrefetch() {
+	entries := winapi.CollectPrefetch(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, p := range entries {
+		if p.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.prefetch = append(e.prefetch, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[PREFETCH] %d entries, %d matched\n", len(entries), matched)
+}
+
+// ScanShimcache collects AppCompatCache entries.
+func (e *Engine) ScanShimcache() {
+	entries := winapi.CollectShimcache(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, s := range entries {
+		if s.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.shimcache = append(e.shimcache, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[SHIMCACHE] %d entries, %d matched\n", len(entries), matched)
+}
+
+// ScanBamDam collects BAM/DAM per-user launch records.
+func (e *Engine) ScanBamDam() {
+	entries := winapi.CollectBamDam(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, b := range entries {
+		if b.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.bamEntries = append(e.bamEntries, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[BAM] %d entries, %d matched\n", len(entries), matched)
+}
+
+// ScanProcesses snapshots running processes.
+func (e *Engine) ScanProcesses() {
+	entries := winapi.CollectProcesses(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, p := range entries {
+		if p.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.processes = append(e.processes, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[PROCESSES] %d running, %d matched\n", len(entries), matched)
+}
+
+// ScanDrivers enumerates installed kernel/fs drivers with blacklist/recent flags.
+func (e *Engine) ScanDrivers() {
+	entries := winapi.CollectDrivers(e.cfg.DriverBlacklist)
+	if len(entries) == 0 {
+		return
+	}
+	flagged := 0
+	for _, d := range entries {
+		if d.Flag != "" {
+			flagged++
+		}
+	}
+	e.mu.Lock()
+	e.drivers = append(e.drivers, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[DRIVERS] %d drivers, %d flagged\n", len(entries), flagged)
+}
+
 // ScanTargetDirs walks the filesystem looking for directories matching target names.
 func (e *Engine) ScanTargetDirs(root string) []models.DirInfo {
 	found := make([]models.DirInfo, 0, 64)
@@ -336,6 +460,11 @@ func (e *Engine) ScanTargetDirs(root string) []models.DirInfo {
 
 		for _, entry := range entries {
 			if !entry.IsDir() {
+				continue
+			}
+
+			// Skip junctions/symlinks: they can form cycles.
+			if winapi.IsReparsePoint(entry) {
 				continue
 			}
 
@@ -391,6 +520,10 @@ func (e *Engine) ScanTargetFiles(root string) []models.NamedFileInfo {
 			path := filepath.Join(dir, name)
 
 			if entry.IsDir() {
+				// Skip junctions/symlinks: they can form cycles.
+				if winapi.IsReparsePoint(entry) {
+					continue
+				}
 				stack = append(stack, path)
 				continue
 			}
@@ -553,7 +686,6 @@ func (e *Engine) EnqueueCandidate(path string, pathChan chan<- models.FileCandid
 		Path: displayPath,
 		Name: displayName,
 		Size: size,
-		Mode: info.Mode(),
 		Mod:  info.ModTime(),
 	}
 	atomic.AddInt64(&e.totalQueued, 1)
@@ -642,48 +774,47 @@ func (e *Engine) Walker(ctx context.Context, drives []string, pathChan chan<- mo
 				fmt.Fprintf(os.Stderr, "[INDEX] %s: Found %d target files\n", drive, len(files))
 			}
 
-		// USN journal for very recent deletions (complements raw MFT scan).
-		// Convert deleted FileInfo results into DeletedFileInfo so they land in the
-		// Deleted tab, not the Cheats tab.
-		var usnDirs []models.DeletedDirInfo
-		if resolver != nil {
-			var usnFiles []models.FileInfo
-			usnFiles, usnDirs, _ = ntfs.ScanDeletedViaUSN(drive, resolver, e.cfg.Rules, e.cfg.TargetDirNames)
-			deletedFiles = append(deletedFiles, usnFiles...)
-		}
-		if len(deletedFiles) > 0 {
-			var keptMatches []models.FileInfo
-			var delInfos []models.DeletedFileInfo
-			for _, f := range deletedFiles {
-				if f.Deleted.IsZero() {
-					continue
+			// USN journal for very recent deletions (complements raw MFT scan).
+			// Convert deleted FileInfo results into DeletedFileInfo so they land in the
+			// Deleted tab, not the Cheats tab.
+			var usnDirs []models.DeletedDirInfo
+			if resolver != nil {
+				var usnFiles []models.FileInfo
+				usnFiles, usnDirs, _ = ntfs.ScanDeletedViaUSN(drive, resolver, e.cfg.Rules, e.cfg.TargetDirNames, e.cfg.USNWindowHours)
+				deletedFiles = append(deletedFiles, usnFiles...)
+			}
+			if len(deletedFiles) > 0 {
+				var keptMatches []models.FileInfo
+				var delInfos []models.DeletedFileInfo
+				for _, f := range deletedFiles {
+					if f.Deleted.IsZero() {
+						continue
+					}
+					// Pure deletion records (USN_DELETED, PF_DELETED or no match)
+					// belong in the Deleted tab. Real rule matches stay in Cheats.
+					m := strings.ToUpper(f.Matched)
+					if m == "" || strings.HasPrefix(m, "USN_DELETED") || strings.HasPrefix(m, "PF_DELETED") {
+						delInfos = append(delInfos, models.DeletedFileInfo{
+							Path:    f.Path,
+							Name:    f.Name,
+							Size:    f.Size,
+							Deleted: f.Deleted,
+						})
+					} else {
+						keptMatches = append(keptMatches, f)
+					}
 				}
-				// Pure deletion records (USN_DELETED, PF_DELETED or no match)
-				// belong in the Deleted tab. Real rule matches stay in Cheats.
-				m := strings.ToUpper(f.Matched)
-				if m == "" || strings.HasPrefix(m, "USN_DELETED") || strings.HasPrefix(m, "PF_DELETED") {
-					delInfos = append(delInfos, models.DeletedFileInfo{
-						Path:    f.Path,
-						Name:    f.Name,
-						Size:    f.Size,
-						Deleted: f.Deleted,
-					})
-				} else {
-					keptMatches = append(keptMatches, f)
+				if len(keptMatches) > 0 {
+					e.AppendResults(keptMatches, nil, nil, nil, nil)
+				}
+				if len(delInfos) > 0 {
+					e.AppendResults(nil, nil, nil, delInfos, nil)
+					fmt.Fprintf(os.Stderr, "[INDEX] %s: Added %d deleted files to results\n", drive, len(delInfos))
 				}
 			}
-			if len(keptMatches) > 0 {
-				e.AppendResults(keptMatches, nil, nil, nil, nil)
+			if len(usnDirs) > 0 {
+				e.AppendResults(nil, nil, nil, nil, usnDirs)
 			}
-			if len(delInfos) > 0 {
-				e.AppendResults(nil, nil, nil, delInfos, nil)
-				fmt.Fprintf(os.Stderr, "[INDEX] %s: Added %d deleted files to results\n", drive, len(delInfos))
-			}
-		}
-		if len(usnDirs) > 0 {
-			e.AppendResults(nil, nil, nil, nil, usnDirs)
-		}
-
 
 			idxMu.Lock()
 			byDrive[drive] = paths
@@ -738,28 +869,28 @@ func (e *Engine) Reader(ctx context.Context, pathChan <-chan models.FileCandidat
 					return
 				default:
 				}
-			f, err := os.Open(candidate.Path)
-			if err != nil {
-				atomic.AddInt64(&e.processedFiles, 1)
-				if e.cfg.ReaderPauseMs > 0 {
-					time.Sleep(time.Duration(e.cfg.ReaderPauseMs) * time.Millisecond)
+				f, err := os.Open(candidate.Path)
+				if err != nil {
+					atomic.AddInt64(&e.processedFiles, 1)
+					if e.cfg.ReaderPauseMs > 0 {
+						time.Sleep(time.Duration(e.cfg.ReaderPauseMs) * time.Millisecond)
+					}
+					continue
 				}
-				continue
-			}
-			var data mmap.MMap
-			if e.cfg.MaxMmapSize > 0 && candidate.Size > e.cfg.MaxMmapSize {
-				data, err = mmap.MapRegion(f, int(e.cfg.MaxMmapSize), mmap.RDONLY, 0, 0)
-			} else {
-				data, err = mmap.Map(f, mmap.RDONLY, 0)
-			}
-			if err != nil {
-				f.Close()
-				atomic.AddInt64(&e.processedFiles, 1)
-				if e.cfg.ReaderPauseMs > 0 {
-					time.Sleep(time.Duration(e.cfg.ReaderPauseMs) * time.Millisecond)
+				var data mmap.MMap
+				if e.cfg.MaxMmapSize > 0 && candidate.Size > e.cfg.MaxMmapSize {
+					data, err = mmap.MapRegion(f, int(e.cfg.MaxMmapSize), mmap.RDONLY, 0, 0)
+				} else {
+					data, err = mmap.Map(f, mmap.RDONLY, 0)
 				}
-				continue
-			}
+				if err != nil {
+					f.Close()
+					atomic.AddInt64(&e.processedFiles, 1)
+					if e.cfg.ReaderPauseMs > 0 {
+						time.Sleep(time.Duration(e.cfg.ReaderPauseMs) * time.Millisecond)
+					}
+					continue
+				}
 
 				mf := models.MappedFile{
 					Candidate: candidate,
@@ -809,45 +940,59 @@ func (e *Engine) Matcher(ctx context.Context, mappedChan <-chan models.MappedFil
 			}
 		}
 
-	// 2. Content-based check (legacy + YARA)
-	if matched == "" {
-		data := mapped.Data
-		var dataSHA256 string
-		needSHA256 := false
-		size := mapped.Candidate.Size
-		for _, r := range e.cfg.Rules {
-			if !r.CheckPath && r.SHA256 != "" && size >= r.Min && size <= r.Max {
-				needSHA256 = true
-				break
-			}
-		}
-		if needSHA256 {
-			sum := sha256.Sum256(data)
-			dataSHA256 = hex.EncodeToString(sum[:])
-		}
-		for _, r := range e.cfg.Rules {
-			if r.CheckPath {
-				continue
-			}
-			if size < r.Min || size > r.Max {
-				continue
-			}
-			if r.SHA256 != "" && strings.EqualFold(dataSHA256, r.SHA256) {
-				matched = "sha256:" + r.SHA256
-				break
-			}
-			if bytes.Contains(data, r.PatternBytes) {
-				matched = r.Pattern
-				break
-			}
-			if r.UTF16 {
-				if bytes.Contains(data, r.UTF16LE) || bytes.Contains(data, r.UTF16BE) {
-					matched = r.Pattern
+		// 2. Content-based check
+		if matched == "" {
+			data := mapped.Data
+			var dataSHA256 string
+			needSHA256 := false
+			size := mapped.Candidate.Size
+			for _, r := range e.cfg.Rules {
+				if !r.CheckPath && r.SHA256 != "" && size >= r.Min && size <= r.Max {
+					needSHA256 = true
 					break
 				}
 			}
+			if needSHA256 {
+				if int64(len(data)) < size {
+					// File was mapped truncated (larger than MaxMmapSize): hash
+					// the whole file from disk, otherwise the digest is wrong.
+					dataSHA256 = streamSHA256(mapped.Candidate.Path)
+				} else {
+					sum := sha256.Sum256(data)
+					dataSHA256 = hex.EncodeToString(sum[:])
+				}
+			}
+			for _, r := range e.cfg.Rules {
+				if r.CheckPath {
+					continue
+				}
+				if size < r.Min || size > r.Max {
+					continue
+				}
+				if r.SHA256 != "" {
+					if dataSHA256 != "" && strings.EqualFold(dataSHA256, r.SHA256) {
+						matched = "sha256:" + r.SHA256
+						break
+					}
+					if len(r.PatternBytes) == 0 {
+						// Hash-only rule that did not match: move on, otherwise
+						// bytes.Contains(data, nil) would swallow all remaining
+						// rules for this file.
+						continue
+					}
+				}
+				if len(r.PatternBytes) > 0 && bytes.Contains(data, r.PatternBytes) {
+					matched = r.Pattern
+					break
+				}
+				if r.UTF16 {
+					if bytes.Contains(data, r.UTF16LE) || bytes.Contains(data, r.UTF16BE) {
+						matched = r.Pattern
+						break
+					}
+				}
+			}
 		}
-	}
 
 		if matched != "" {
 			e.mu.Lock()
@@ -855,7 +1000,7 @@ func (e *Engine) Matcher(ctx context.Context, mappedChan <-chan models.MappedFil
 				Path:       mapped.Candidate.Path,
 				Name:       mapped.Candidate.Name,
 				Size:       mapped.Candidate.Size,
-				Attributes: attrToString(mapped.Candidate.Mode),
+				Attributes: winapi.WinAttrsToString(mapped.Candidate.Path),
 				Matched:    matched,
 				Modified:   mapped.Candidate.Mod,
 			})
@@ -868,22 +1013,18 @@ func (e *Engine) Matcher(ctx context.Context, mappedChan <-chan models.MappedFil
 	}
 }
 
-func attrToString(attr os.FileMode) string {
-	var attrs []string
-	if attr&os.ModeDir != 0 {
-		attrs = append(attrs, "DIR")
+// streamSHA256 hashes a file by streaming it from disk in fixed-size chunks.
+// Used when the mmap'd view was truncated (file larger than MaxMmapSize),
+// where hashing the mapped prefix would produce an invalid digest.
+func streamSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
 	}
-	if attr&0400 != 0 {
-		attrs = append(attrs, "R")
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
 	}
-	if attr&0200 != 0 {
-		attrs = append(attrs, "W")
-	}
-	if attr&0100 != 0 {
-		attrs = append(attrs, "X")
-	}
-	if len(attrs) == 0 {
-		attrs = append(attrs, "NORMAL")
-	}
-	return strings.Join(attrs, "|")
+	return hex.EncodeToString(h.Sum(nil))
 }

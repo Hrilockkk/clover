@@ -10,6 +10,7 @@ package anti
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,33 +20,36 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
-	"scanner/internal/logger"
 	"scanner/internal/obfuscate"
 	"scanner/internal/winapi"
 )
 
 // RunHardening executes all hardening checks. If anything suspicious is
-// detected, the process exits after logging the reason.
+// detected, the process exits with a neutral, non-revealing message —
+// the exact reason (debugger/VM/timing) is never printed.
 func RunHardening() {
 	if winapi.ProtectionBypassAllowed() {
 		return
 	}
 	if winapi.IsDebuggerPresent() {
-		logger.Warn("debugger detected, exiting")
-		os.Exit(1)
+		exitNeutral()
 	}
 	if analysisEnvironment() {
-		logger.Warn("analysis/VM/sandbox environment detected, exiting")
-		os.Exit(1)
+		exitNeutral()
 	}
 	if timingAnomaly() {
-		logger.Warn("timing anomaly detected, exiting")
-		os.Exit(1)
+		exitNeutral()
 	}
 	if currentProcessAnomaly() {
-		logger.Warn("process name anomaly detected, exiting")
-		os.Exit(1)
+		exitNeutral()
 	}
+}
+
+// exitNeutral prints a generic initialization error and exits, without
+// disclosing which hardening check fired.
+func exitNeutral() {
+	fmt.Fprintln(os.Stderr, obfuscate.ERR_INIT())
+	os.Exit(1)
 }
 
 // analysisEnvironment returns true if the process appears to be running inside a
@@ -77,9 +81,7 @@ func checkVMRegistry() bool {
 		{registry.LOCAL_MACHINE, `HARDWARE\ACPI\DSDT`, ``},
 		{registry.LOCAL_MACHINE, `HARDWARE\ACPI\FADT`, ``},
 	}
-	vmTokens := []string{
-		`VMWARE`, `VBOX`, `VIRTUAL`, `QEMU`, `XEN`, `PARALLELS`, `HYPER-V`, `BOCHS`, `INSIDE`, `SANDCASTLE`,
-	}
+	vmTokens := strings.Split(obfuscate.ANTI_VM_TOKENS(), ",")
 	for _, k := range keys {
 		var text string
 		if k.value == `` {
@@ -119,18 +121,13 @@ func checkVMRegistry() bool {
 }
 
 func checkVMDrivers() bool {
-	drivers := []string{
-		`C:\Windows\System32\drivers\vmci.sys`,
-		`C:\Windows\System32\drivers\vmhgfs.sys`,
-		`C:\Windows\System32\drivers\vmmemctl.sys`,
-		`C:\Windows\System32\drivers\vmrawdsk.sys`,
-		`C:\Windows\System32\drivers\vboxguest.sys`,
-		`C:\Windows\System32\drivers\vboxmouse.sys`,
-		`C:\Windows\System32\drivers\vboxsf.sys`,
-		`C:\Windows\System32\drivers\vboxvideo.sys`,
+	sysRoot := os.Getenv(`SystemRoot`)
+	if sysRoot == `` {
+		sysRoot = `C:\Windows`
 	}
-	for _, d := range drivers {
-		if _, err := os.Stat(d); err == nil {
+	driversDir := filepath.Join(sysRoot, `System32`, `drivers`)
+	for _, name := range strings.Split(obfuscate.ANTI_VM_DRIVERS(), ",") {
+		if _, err := os.Stat(filepath.Join(driversDir, name)); err == nil {
 			return true
 		}
 	}
@@ -138,12 +135,7 @@ func checkVMDrivers() bool {
 }
 
 func checkSandboxDLL() bool {
-	modules := []string{
-		`SbieDll.dll`,
-		`SxIn.dll`,
-		`api_log.dll`,
-		`dir_watch.dll`,
-	}
+	modules := strings.Split(obfuscate.ANTI_SANDBOX_DLLS(), ",")
 	h, err := windows.GetCurrentProcess()
 	if err != nil {
 		return false
@@ -162,10 +154,9 @@ func checkSandboxDLL() bool {
 		if err := windows.GetModuleBaseName(h, mods[i], &buf[0], uint32(len(buf))); err != nil {
 			continue
 		}
-		name := windows.UTF16ToString(buf)
-		upper := strings.ToUpper(name)
+		name := strings.ToLower(windows.UTF16ToString(buf))
 		for _, mod := range modules {
-			if upper == strings.ToUpper(mod) {
+			if name == mod {
 				return true
 			}
 		}
@@ -191,7 +182,7 @@ func timingAnomaly() bool {
 
 func qpc() time.Duration {
 	kernel32 := windows.NewLazySystemDLL(obfuscate.KERNEL32())
-	qpc := kernel32.NewProc(`QueryPerformanceCounter`)
+	qpc := kernel32.NewProc(obfuscate.QPC_PROC())
 	var now int64
 	qpc.Call(uintptr(unsafe.Pointer(&now)))
 	freq := qpf()
@@ -203,7 +194,7 @@ func qpc() time.Duration {
 
 func qpf() int64 {
 	kernel32 := windows.NewLazySystemDLL(obfuscate.KERNEL32())
-	qpf := kernel32.NewProc(`QueryPerformanceFrequency`)
+	qpf := kernel32.NewProc(obfuscate.QPF_PROC())
 	var freq int64
 	qpf.Call(uintptr(unsafe.Pointer(&freq)))
 	return freq
@@ -212,11 +203,7 @@ func qpf() int64 {
 // currentProcessAnomaly checks whether the running executable has been renamed
 // to a common debugger or analysis tool, which is a trivial sandbox/VM trick.
 func currentProcessAnomaly() bool {
-	suspicious := []string{
-		`x64dbg`, `x32dbg`, `ollydbg`, `windbg`, `idaq`, `idag`, `idaw`, `ida64`,
-		`immunity`, `decompile`, `ghidra`, `dnspy`, `cheatengine`, `cheat engine`,
-		`processhacker`, `procmon`, `procexp`, `tcpview`, `wireshark`, `fiddler`,
-	}
+	suspicious := strings.Split(obfuscate.ANTI_TOOL_NAMES(), ",")
 	h, err := windows.GetCurrentProcess()
 	if err != nil {
 		return false

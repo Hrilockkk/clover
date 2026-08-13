@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
-    <title>Пользователи — Clover · Fear Project</title>
+    <title>Пользователи — Clover</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -16,13 +16,14 @@
         <aside class="sidebar">
             <a href="/" class="sidebar-head">
                 <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
-                <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
+                <span class="brand-text">Clover</span>
             </a>
             <nav class="sidebar-nav">
                 <p class="sidebar-section">Проверки</p>
                 <a href="/scans" class="side-item"><i class="ph ph-link-simple"></i>Ссылки</a>
                 <a href="/scans" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</a>
                 <a href="/scans" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</a>
+                <a href="/signatures" class="side-item"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
                 <p class="sidebar-section">Управление</p>
                 <a href="/admin" class="side-item active"><i class="ph ph-shield-star"></i>Пользователи</a>
             </nav>
@@ -79,7 +80,6 @@
                             <tr class="border-b border-emerald-300/10">
                                 <th class="text-left py-3 px-5">Пользователь</th>
                                 <th class="text-left py-3 px-3">Уровень</th>
-                                <th class="text-left py-3 px-3">Сканы</th>
                                 <th class="text-left py-3 px-3">Сессии</th>
                                 <th class="text-left py-3 px-3">Создан</th>
                                 <th class="text-right py-3 px-5">Действия</th>
@@ -127,10 +127,6 @@
                         </select>
                     </div>
                 </div>
-                <label class="flex items-center gap-3 cursor-pointer select-none pt-1">
-                    <span class="switch"><input type="checkbox" id="newCanScan"><span class="track"></span></span>
-                    <span class="text-sm text-emerald-50/75">Разрешить сканы <span class="text-emerald-100/35">(точечный доступ к /scans)</span></span>
-                </label>
             </div>
             <div class="flex gap-3 justify-end px-6 py-4 border-t border-emerald-300/10">
                 <button onclick="closeCreateModal()" class="btn btn-ghost">Отмена</button>
@@ -262,7 +258,6 @@
             document.getElementById('newUsername').value = '';
             document.getElementById('newPassword').value = generatePassword();
             document.getElementById('newDisplayName').value = '';
-            document.getElementById('newCanScan').checked = false;
             document.getElementById('newLevel').value = '4';
             document.getElementById('createModal').classList.remove('hidden');
             document.getElementById('newUsername').focus();
@@ -277,14 +272,13 @@
             const password = document.getElementById('newPassword').value;
             const displayName = document.getElementById('newDisplayName').value.trim();
             const level = parseInt(document.getElementById('newLevel').value);
-            const canScan = document.getElementById('newCanScan').checked;
             if (!username) { toast('Введите логин', 'error'); return; }
             if (password.length < 4) { toast('Пароль минимум 4 символа', 'error'); return; }
             const btn = document.getElementById('createUserBtn');
             btn.classList.add('is-loading');
             const res = await fetch('/api/users', {
                 method: 'POST', headers: authHeaders(),
-                body: JSON.stringify({ username, password, displayName, level, canScan })
+                body: JSON.stringify({ username, password, displayName, level })
             });
             btn.classList.remove('is-loading');
             const data = await res.json().catch(() => ({}));
@@ -311,7 +305,7 @@
 
         function renderUsers() {
             const body = document.getElementById('usersBody');
-            if (!users.length) { body.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="ph ph-users"></i>Пока никого нет — создайте первого пользователя</div></td></tr>'; return; }
+            if (!users.length) { body.innerHTML = '<tr><td colspan="5"><div class="empty-state"><i class="ph ph-users"></i>Пока никого нет — создайте первого пользователя</div></td></tr>'; return; }
             body.innerHTML = users.map(u => {
                 const isSelf = u.id === currentUser.id;
                 const initial = (u.displayName || u.username || '?').trim().charAt(0) || '?';
@@ -339,12 +333,6 @@
                             <select onchange="updateUser('${u.id}', { level: parseInt(this.value) })" ${isSelf ? 'disabled title="Нельзя менять свой уровень"' : ''}
                                 class="!h-7 !py-0 !px-2 text-xs" style="min-width:118px">${levelOptions}</select>
                         </div>
-                    </td>
-                    <td class="py-3 px-3">
-                        <label class="flex items-center gap-2.5 cursor-pointer select-none">
-                            <span class="switch"><input type="checkbox" ${u.canScan ? 'checked' : ''} onchange="updateUser('${u.id}', { canScan: this.checked })"><span class="track"></span></span>
-                            <span class="text-xs ${u.canScan ? 'text-emerald-300' : 'text-emerald-100/35'}">${u.canScan ? 'разрешены' : 'запрещены'}</span>
-                        </label>
                     </td>
                     <td class="py-3 px-3">
                         ${u.activeSessions > 0 ? `<span class="tag tag-green">${u.activeSessions}</span>` : '<span class="text-emerald-100/30 text-xs">нет</span>'}

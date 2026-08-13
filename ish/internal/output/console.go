@@ -237,8 +237,10 @@ func truncateRunes(s string, n int) string {
 	return string(runes[:n])
 }
 
-// PrintConsole renders a compact 80-column table with tags.
-func PrintConsole(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, elapsed time.Duration) {
+// PrintConsole renders a compact 80-column table with tags. For the bulk
+// collectors (prefetch/shimcache/bam/processes/drivers) only the entries
+// that matched a target name (or were flagged) are shown.
+func PrintConsole(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration) {
 	fmt.Println()
 
 	// Hardware fingerprint
@@ -414,6 +416,73 @@ func PrintConsole(results []models.FileInfo, dirs []models.DirInfo, named []mode
 		})
 	}
 
+	// 11-14. Launch traces (matched only)
+	for _, p := range prefetch {
+		if p.Matched == "" {
+			continue
+		}
+		rows = append(rows, compactRow{
+			tag:     "[PF]",
+			color:   ansiBoldYellow,
+			name:    p.Name,
+			size:    "-",
+			details: p.Modified.Format("2006-01-02"),
+			path:    p.Path,
+		})
+	}
+	for _, s := range shimcache {
+		if s.Matched == "" {
+			continue
+		}
+		rows = append(rows, compactRow{
+			tag:     "[SHIM]",
+			color:   ansiBoldYellow,
+			name:    s.Matched,
+			size:    "-",
+			details: s.Modified.Format("2006-01-02"),
+			path:    s.Path,
+		})
+	}
+	for _, b := range bam {
+		if b.Matched == "" {
+			continue
+		}
+		rows = append(rows, compactRow{
+			tag:     "[BAM]",
+			color:   ansiBoldYellow,
+			name:    b.Matched,
+			size:    "-",
+			details: b.LastRun.Format("2006-01-02"),
+			path:    b.Path,
+		})
+	}
+	for _, p := range processes {
+		if p.Matched == "" {
+			continue
+		}
+		rows = append(rows, compactRow{
+			tag:     "[PROC]",
+			color:   ansiBoldRed,
+			name:    p.Name,
+			size:    "-",
+			details: fmt.Sprintf("pid=%d", p.PID),
+			path:    p.Path,
+		})
+	}
+	for _, d := range drivers {
+		if d.Flag == "" {
+			continue
+		}
+		rows = append(rows, compactRow{
+			tag:     "[DRV]",
+			color:   ansiBoldRed,
+			name:    d.Name,
+			size:    "-",
+			details: d.Flag,
+			path:    d.ImagePath,
+		})
+	}
+
 	for _, r := range rows {
 		name := truncateRunes(r.name, 18)
 		details := truncateRunes(r.details, 26)
@@ -441,8 +510,9 @@ func WaitForExit() {
 	fmt.Println("\n\n=== Press ENTER to exit ===")
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		_, err := reader.ReadString('\n')
-		if err == nil {
+		if _, err := reader.ReadString('\n'); err != nil {
+			// Either the user pressed ENTER, or stdin is closed/redirected
+			// (no TTY) — exit in both cases instead of spinning forever.
 			return
 		}
 		time.Sleep(200 * time.Millisecond)

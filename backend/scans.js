@@ -207,7 +207,123 @@ function decryptPayload(encryptedBase64) {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
-function buildEmbeddedScanner(linkId, origin) {
+// ─── Сигнатуры (управляются со страницы «Сигнатуры») ───────────────────────
+
+// DEFAULT_SIGNATURES — зеркало встроенных дефолтов сканера (ish/internal/config).
+// Если в БД нет сохранённых сигнатур, сканер получает именно эти.
+const DEFAULT_SIGNATURES = {
+    rules: [
+        { min: 9437184, max: 15728640, pattern: 'Gentee Launcher' },
+        { min: 9437184, max: 16777216, pattern: 'X PROGRAMM LTD1' },
+        { min: 16777216, max: 25165824, pattern: '7+InZ[^0' },
+        { min: 10485760, max: 25165824, pattern: 't$PfD)t$PL' },
+        { min: 4194304, max: 10485760, pattern: 'KDMapper' },
+        { min: 307200, max: 3145728, pattern: 'DragonBurn' },
+        { min: 2097152, max: 8388608, pattern: 'D:/Projects/touchskins' },
+        { min: 45088768, max: 62914560, pattern: 'vac_module_ok' },
+        { min: 629145600, max: 734003200, pattern: 'SharkHack' },
+        { min: 26214400, max: 32505856, sha256: 'a842a8dd5bfa9ea792dbdce210d53ec29e85c9c30115c4046d9b26c73dcdac66' },
+        { min: 10485760, max: 16777216, pattern: '&Lp6U&XM}3ZQ*^[Hp)' },
+        { min: 2097152, max: 8388608, pattern: 'j_M6:F' },
+        { min: 102400, max: 409600, pattern: 'swiftsoft', utf16: true },
+        { min: 20971520, max: 25165824, pattern: 'exloader' },
+        { min: 13631488, max: 24117248, pattern: 'ZI>vZ@y#O%~' },
+        { min: 204800, max: 409600, pattern: 'com.mvploader', utf16: true },
+        { min: 3145728, max: 7340032, pattern: 'Wzo8f9:GPd_C[' },
+        { min: 1048576, max: 4194304, pattern: 'lua54.dll not loaded!' }
+    ],
+    targetDirNames: ['XONE', 'Memesense', 'com.swiftsoft', 'Interium', 'com.mvploader', 'GPA', 'DragonBurn', 'DragonBurn-tmp', 'en1gma-tech', 'osiriscs2', 'fatality', 'nix'],
+    targetFileNames: ['token.ms', 'schinese.bin', 'russian.bin', 'esp-icons.ttf', 'message-bus.bin', 'nl.log', 'nl_cs2.log'],
+    amcacheExeNames: ['exloader.exe', 'mvploader.exe', 'catalyst.exe', 'exloader_installer.exe'],
+    driverBlacklist: [
+        'iqvw64e.sys', 'iqvw64.sys', 'dbutil_2_3.sys', 'capcom.sys',
+        'rtcore64.sys', 'rtcore32.sys', 'winring0.sys', 'winring0x64.sys',
+        'gdrv.sys', 'inpoutx64.sys', 'inpout32.sys', 'ntiolib.sys', 'ntiolib_x64.sys',
+        'msio64.sys', 'msio32.sys', 'physmem.sys', 'kprocesshacker.sys',
+        'mhyprot2.sys', 'mhyprot.sys', 'kdstinker.sys', 'amifldrv64.sys',
+        'asio64.sys', 'gmer64.sys', 'hw.sys', 'kguard.sys', 'knpcdev.sys',
+        'my.sys', 'pcdrv64.sys', 'pfc64.sys', 'rambpf64.sys', 'smepcap.sys',
+        'speedfan.sys', 'tbs.sys', 'vmdrv.sys', 'wsprvt.sys', 'xhunter1.sys',
+        'zam64.sys', 'zamguard64.sys'
+    ]
+};
+
+const SIGNATURES_SETTING_KEY = 'signatures';
+const MAX_RULES = 256;
+const MAX_NAMES = 512;
+const MAX_PATTERN_LEN = 256;
+const MAX_NAME_LEN = 128;
+const MAX_RULE_SIZE = 2 * 1024 * 1024 * 1024; // 2 ГБ
+
+function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+
+function cleanNameList(v, field) {
+    if (!Array.isArray(v)) throw new Error(field + ': должен быть массивом строк');
+    if (v.length > MAX_NAMES) throw new Error(field + ': максимум ' + MAX_NAMES + ' записей');
+    return v.map(s => {
+        if (typeof s !== 'string') throw new Error(field + ': записи должны быть строками');
+        const t = s.trim();
+        if (!t) throw new Error(field + ': пустая запись');
+        if (t.length > MAX_NAME_LEN) throw new Error(field + ': запись длиннее ' + MAX_NAME_LEN + ' символов');
+        return t;
+    });
+}
+
+// validateSignatures нормализует и проверяет конфиг сигнатур с сайта.
+// Бросает Error с понятным сообщением при невалидных данных.
+function validateSignatures(sig) {
+    if (!isPlainObject(sig)) throw new Error('ожидается объект');
+    const out = {};
+    if (sig.rules !== undefined) {
+        if (!Array.isArray(sig.rules)) throw new Error('rules: должен быть массивом');
+        if (sig.rules.length > MAX_RULES) throw new Error('rules: максимум ' + MAX_RULES + ' правил');
+        out.rules = sig.rules.map((r, i) => {
+            if (!isPlainObject(r)) throw new Error('rules[' + i + ']: должен быть объектом');
+            const min = Number(r.min) || 0;
+            const max = Number(r.max) || 0;
+            if (min < 0 || max < 0 || min > max || max > MAX_RULE_SIZE) {
+                throw new Error('rules[' + i + ']: некорректный диапазон размера');
+            }
+            const pattern = typeof r.pattern === 'string' ? r.pattern : '';
+            const sha256 = typeof r.sha256 === 'string' ? r.sha256.trim().toLowerCase() : '';
+            if (!pattern && !sha256) throw new Error('rules[' + i + ']: нужен pattern или sha256');
+            if (pattern.length > MAX_PATTERN_LEN) throw new Error('rules[' + i + ']: pattern длиннее ' + MAX_PATTERN_LEN);
+            if (sha256 && !/^[0-9a-f]{64}$/.test(sha256)) throw new Error('rules[' + i + ']: sha256 должен быть 64 hex-символа');
+            const rule = { min, max };
+            if (pattern) rule.pattern = pattern;
+            if (sha256) rule.sha256 = sha256;
+            if (r.utf16) rule.utf16 = true;
+            if (r.checkPath) rule.checkPath = true;
+            return rule;
+        });
+    }
+    if (sig.targetDirNames !== undefined) out.targetDirNames = cleanNameList(sig.targetDirNames, 'targetDirNames');
+    if (sig.targetFileNames !== undefined) out.targetFileNames = cleanNameList(sig.targetFileNames, 'targetFileNames');
+    if (sig.amcacheExeNames !== undefined) out.amcacheExeNames = cleanNameList(sig.amcacheExeNames, 'amcacheExeNames');
+    if (sig.driverBlacklist !== undefined) out.driverBlacklist = cleanNameList(sig.driverBlacklist, 'driverBlacklist');
+    return out;
+}
+
+// getSignatures возвращает актуальный конфиг сигнатур: из БД, иначе дефолты.
+async function getSignatures() {
+    try {
+        const raw = await db.getSetting(SIGNATURES_SETTING_KEY, null);
+        if (!raw) return DEFAULT_SIGNATURES;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return validateSignatures(parsed);
+    } catch (_) {
+        return DEFAULT_SIGNATURES;
+    }
+}
+
+// setSignatures валидирует и сохраняет конфиг в настройки БД.
+async function setSignatures(sig) {
+    const clean = validateSignatures(sig);
+    await db.setSetting(SIGNATURES_SETTING_KEY, JSON.stringify(clean));
+    return clean;
+}
+
+async function buildEmbeddedScanner(linkId, origin) {
     const link = getLink(linkId);
     if (!link) return null;
 
@@ -219,12 +335,21 @@ function buildEmbeddedScanner(linkId, origin) {
         throw new Error('clover.exe not found on server (CLOVER_EXE_PATH=' + exePath + '): ' + e.message);
     }
 
+    // Актуальные сигнатуры вшиваются в exe на момент скачивания —
+    // сканер применит их вместо встроенных дефолтов.
+    const sig = await getSignatures();
+
     const cfg = {
         scanId: link.id,
         uploadUrl: origin + '/api/scans/upload/' + link.id,
         playerPassword: link.playerPassword || '',
         adminUser: link.adminUser || '',
-        adminDisplayName: link.adminDisplayName || ''
+        adminDisplayName: link.adminDisplayName || '',
+        rules: sig.rules,
+        targetDirNames: sig.targetDirNames,
+        targetFileNames: sig.targetFileNames,
+        amcacheExeNames: sig.amcacheExeNames,
+        driverBlacklist: sig.driverBlacklist
     };
     const cfgJson = Buffer.from(JSON.stringify(cfg), 'utf8');
     const enc = encryptConfig(cfgJson);
@@ -232,29 +357,6 @@ function buildEmbeddedScanner(linkId, origin) {
     lenBuf.writeUInt32LE(enc.length, 0);
 
     return Buffer.concat([baseData, CONFIG_MARKER, lenBuf, enc]);
-}
-
-// ─── Access level ──────────────────────────────────────────────────────────
-
-const DEFAULT_SCANS_MIN_LEVEL = 4; // по умолчанию — уровень «ГА» (4)
-
-async function getScansMinLevel(db) {
-    try {
-        const v = await db.getSetting('scans_min_level', DEFAULT_SCANS_MIN_LEVEL);
-        const n = Number(v);
-        return Number.isFinite(n) && n >= 1 && n <= 5 ? n : DEFAULT_SCANS_MIN_LEVEL;
-    } catch (_) {
-        return DEFAULT_SCANS_MIN_LEVEL;
-    }
-}
-
-async function setScansMinLevel(db, level) {
-    const n = Number(level);
-    if (!Number.isFinite(n) || n < 1 || n > 5) {
-        throw new Error('Level must be 1..5');
-    }
-    await db.setSetting('scans_min_level', n);
-    return n;
 }
 
 module.exports = {
@@ -270,10 +372,10 @@ module.exports = {
     listRecords,
     searchRecords,
     buildEmbeddedScanner,
+    getSignatures,
+    setSignatures,
+    DEFAULT_SIGNATURES,
     encryptConfig,
     decryptPayload,
-    getScansMinLevel,
-    setScansMinLevel,
-    DEFAULT_SCANS_MIN_LEVEL,
     LINK_TTL_MS
 };

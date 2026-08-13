@@ -118,29 +118,70 @@ func TestMFTRecordSizeFromBoot_Negative(t *testing.T) {
 }
 
 func TestApplyMFTFixup(t *testing.T) {
-	// Create a minimal sector-sized buffer with a fixup array.
+	// A well-formed 1024-byte record = 2 sectors: USN + 2 fixup entries.
 	sector := 512
-	rec := make([]byte, sector)
+	rec := make([]byte, 2*sector)
 	copy(rec[0:4], []byte("FILE"))
 	binary.LittleEndian.PutUint16(rec[0x04:], 0x30) // update seq offset
 	binary.LittleEndian.PutUint16(rec[0x06:], 0x03) // update seq count (1 + 2 fixups)
-	// Fixup array at offset 0x30: seq number + 2 entries
+	// Fixup array at offset 0x30: USN (0xAABB) + 2 replacement entries
 	rec[0x30] = 0xAA
 	rec[0x31] = 0xBB
 	rec[0x32] = 0xCC
 	rec[0x33] = 0xDD
 	rec[0x34] = 0xEE
 	rec[0x35] = 0xFF
-	// Place the original signatures at end of each sector
+	// Sector tails carry the USN on disk
 	rec[sector-2] = 0xAA
 	rec[sector-1] = 0xBB
+	rec[2*sector-2] = 0xAA
+	rec[2*sector-1] = 0xBB
 
-	ok := applyMFTFixup(rec, 512)
+	ok := applyMFTFixup(rec, uint16(sector))
 	if !ok {
 		t.Fatal("applyMFTFixup returned false")
 	}
 	if rec[sector-2] != 0xCC || rec[sector-1] != 0xDD {
-		t.Fatalf("fixup not applied correctly: got %x %x", rec[sector-2], rec[sector-1])
+		t.Fatalf("fixup 1 not applied: got %x %x", rec[sector-2], rec[sector-1])
+	}
+	if rec[2*sector-2] != 0xEE || rec[2*sector-1] != 0xFF {
+		t.Fatalf("fixup 2 not applied: got %x %x", rec[2*sector-2], rec[2*sector-1])
+	}
+}
+
+// A record whose sector tail does not carry the update sequence number is
+// stale/corrupt and must be rejected (previously the fixup was applied blind).
+func TestApplyMFTFixup_USNMismatch(t *testing.T) {
+	sector := 512
+	rec := make([]byte, 2*sector)
+	copy(rec[0:4], []byte("FILE"))
+	binary.LittleEndian.PutUint16(rec[0x04:], 0x30)
+	binary.LittleEndian.PutUint16(rec[0x06:], 0x03)
+	rec[0x30] = 0xAA
+	rec[0x31] = 0xBB
+	rec[0x32] = 0xCC
+	rec[0x33] = 0xDD
+	rec[0x34] = 0xEE
+	rec[0x35] = 0xFF
+	rec[sector-2] = 0xAA
+	rec[sector-1] = 0xBB
+	// Second sector tail does NOT carry the USN:
+	rec[2*sector-2] = 0x00
+	rec[2*sector-1] = 0x00
+
+	if applyMFTFixup(rec, uint16(sector)) {
+		t.Fatal("applyMFTFixup should reject a record with a USN mismatch")
+	}
+}
+
+// A record with usSize=1 (USN only, no fixups) is valid and untouched.
+func TestApplyMFTFixup_NoFixups(t *testing.T) {
+	rec := make([]byte, 512)
+	copy(rec[0:4], []byte("FILE"))
+	binary.LittleEndian.PutUint16(rec[0x04:], 0x30)
+	binary.LittleEndian.PutUint16(rec[0x06:], 0x01)
+	if !applyMFTFixup(rec, 512) {
+		t.Fatal("applyMFTFixup should accept a record without fixups")
 	}
 }
 

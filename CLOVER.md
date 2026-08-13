@@ -44,8 +44,9 @@ Clover — подсистема проверки игрока на его ком
 | Сканер | `clover.exe` | Windows-бинарь (PE x64). Читает конфиг из собственного «хвоста», сканирует ПК, шифрует и отправляет результат, самоудаляется |
 | Ядро | `backend/scans.js` | CRUD ссылок (файлы `data/scans/links/*.json`, TTL 10 мин), AES-256-GCM шифрование конфига/payload, сборка exe «под ссылку», хранение сканов через DB-слой |
 | Роуты | `backend/scans.routes.js` | Все эндпоинты `/api/scans/*` с доступом, rate-limit и логированием |
-| БД | `backend/scans.sql` | Таблица `panel_scans` / `scans` (JSON payload + индексные поля), колонка `can_scan` у пользователя |
-| Админ-UI | `frontend/scans.html` | Создание/удаление ссылок, готовые CMD/PowerShell one-liner'ы, список и просмотр сканов, поиск, настройка уровня доступа |
+| БД | `backend/scans.sql` | Таблица `panel_scans` / `scans` (JSON payload + индексные поля); сигнатуры — в настройках БД (ключ `signatures`) |
+| Админ-UI | `frontend/scans.html` | Создание/удаление ссылок, готовые CMD/PowerShell one-liner'ы, список и просмотр сканов (вкладки: prefetch/shimcache/bam/процессы/драйверы), поиск |
+| Сигнатуры-UI | `frontend/signatures.html` | Правила контента, списки целевых имён, amcache-имена, чёрный список драйверов; просмотр всем, запись — уровень 5 |
 | Player-UI | `frontend/scan-player.html` | Инструкция, кнопка скачивания, dropzone для ручной загрузки `.enc` |
 
 ---
@@ -112,7 +113,14 @@ Clover — подсистема проверки игрока на его ком
   "uploadUrl": "https://site/api/scans/upload/<id>",
   "playerPassword": "K7X9PQ2M",
   "adminUser": "ftu",
-  "adminDisplayName": "Ftu"
+  "adminDisplayName": "Ftu",
+  // Актуальные сигнатуры со страницы «Сигнатуры» — вшиваются при скачивании
+  // и заменяют встроенные дефолты сканера:
+  "rules":           [ { "min": 9437184, "max": 15728640, "pattern": "Gentee Launcher" } ],
+  "targetDirNames":  [ "XONE", "Memesense" ],
+  "targetFileNames": [ "token.ms", "nl.log" ],
+  "amcacheExeNames": [ "exloader.exe" ],
+  "driverBlacklist": [ "iqvw64e.sys", "capcom.sys" ]
 }
 ```
 
@@ -121,6 +129,27 @@ Clover — подсистема проверки игрока на его ком
   ⚠️ Менять ключ можно только синхронно с пересборкой clover.exe.
 - `uploadUrl` строится из origin'а запроса (`x-forwarded-proto/host`) —
   поэтому сайт должен отдавать правильный внешний хост (см. раздел 6).
+
+### 3.2а. Сигнатуры (страница «Сигнатуры»)
+
+Правила поиска больше не зашиты в бинарь: сервер при каждом скачивании
+вшивает в exe актуальный конфиг из БД (`scans.getSignatures()` → ключ
+`signatures` в настройках; если не сохранён — `DEFAULT_SIGNATURES` в
+`backend/scans.js`, зеркало дефолтов сканера). Управление:
+
+- **rules** — контентные правила: `pattern` (байтовая строка) или `sha256`
+  (точный хэш), диапазон размеров `min`/`max` в байтах, флаги `utf16`
+  (искать и UTF-16LE/BE формы) и `checkPath` (матч по пути, без чтения).
+- **targetDirNames** — имена папок, сразу попадающие в отчёт.
+- **targetFileNames** — точные имена файлов на любом диске.
+- **amcacheExeNames** — программы для поиска в Amcache.hve.
+- **driverBlacklist** — BYOVD/злоупотребляемые драйверы (флаг `blacklist`).
+
+Списки имён также влияют на подсветку совпадений (`matched`) в новых
+коллекторах: prefetch, shimcache, bam, процессы. `GET /api/scans/signatures`
+возвращает `{signatures, defaults}`; `PUT` валидирует и сохраняет
+(лог `signatures_update`). Сканер применяет embedded-конфиг поверх дефолтов
+(`config.ApplyEmbedded`), отсутствующие поля (null) не трогают дефолт.
 
 Сканер при запуске находит маркер в конце собственного файла, читает длину,
 расшифровывает конфиг тем же ключом и работает автономно.
@@ -145,7 +174,12 @@ Clover — подсистема проверки игрока на его ком
   "amcache":      [ { "Name", "Path", "LastRun" } ],
   "shellbags":    [ { "Name", "Path", "LastAccess" } ],
   "appData":      [ { "FileName", "DirPath", "DirModified", "FileModified" } ],
-  "usb":          [ … ]
+  "usb":          [ … ],
+  "prefetch":     [ { "name", "path", "size", "created", "modified", "matched" } ],   // Prefetch-запуски (mtime ≈ last run)
+  "shimcache":    [ { "path", "modified", "executed", "matched" } ],                 // AppCompatCache Win10/11
+  "bam":          [ { "source": "bam|dam", "userSid", "path", "lastRun", "matched" } ],
+  "processes":    [ { "pid", "name", "path", "matched" } ],                          // снапшот процессов
+  "drivers":      [ { "name", "imagePath", "kind": "kernel|fs", "keyModified", "flag": "blacklist|recent" } ]
 }
 ```
 
@@ -168,23 +202,22 @@ Clover — подсистема проверки игрока на его ком
 
 | Метод | Путь | Доступ | Назначение |
 |---|---|---|---|
-| GET | `/api/scans/links` | scan-доступ¹ | Список живых ссылок + текущий `minLevel` |
+| GET | `/api/scans/links` | scan-доступ¹ | Список живых ссылок |
 | POST | `/api/scans/links` | scan-доступ¹ | Создать ссылку `{note}` → `link`, `cmdCommand`, `psCommand`, URL'ы |
 | DELETE | `/api/scans/links/:id` | scan-доступ¹ | Удалить ссылку |
 | GET | `/api/scans/list` | scan-доступ¹ | Все сканы (DESC по времени) |
 | GET | `/api/scans/search?q=` | scan-доступ¹ | Поиск по SteamID / HWID / hostname / нику / админу |
 | GET | `/api/scans/view/:id` | scan-доступ¹ | Полный JSON одного скана |
-| GET | `/api/scans/level` | level ≥ 4 | Текущий `scans_min_level` |
-| POST | `/api/scans/level` | level = 5 | Установить `scans_min_level` `{minLevel: 1..5}` |
+| GET | `/api/scans/signatures` | scan-доступ¹ | Актуальные сигнатуры + встроенные дефолты |
+| PUT | `/api/scans/signatures` | level = 5 | Сохранить сигнатуры `{signatures: {rules, targetDirNames, targetFileNames, amcacheExeNames, driverBlacklist}}` |
 | GET | `/api/scans/download/:id?p=<pwd>` | публичный² | clover.exe со встроенным конфигом (octet-stream) |
 | GET | `/api/scans/download-b64/:id?p=<pwd>` | публичный² | То же в JSON `{base64, name, size}` — обход CDN |
 | POST | `/api/scans/upload/:id` | публичный³ | Приём результата от сканера |
 | POST | `/api/scans/upload-manual/:id` | публичный³ | Ручная загрузка `.enc` со страницы игрока |
 | GET | `/api/scans/page/:id` | публичный | JSON-описание ссылки для `/scan?id=` |
 
-¹ **scan-доступ**: `user.canScan === true` (пер-юзерный тоггл «Разрешить сканы» в
-управлении пользователями, `PUT /api/users/:id {canScan}`) **ИЛИ**
-`level >= scans_min_level` (глобальная настройка, по умолчанию 4).
+¹ **scan-доступ**: любой авторизованный пользователь панели — если учётная
+запись есть в `/admin`, доступ уже есть.
 
 ² Пароль в query `?p=`; rate-limit **10 запросов/мин с IP**.
 ³ Авторизация по самому id ссылки (32 hex); rate-limit **10 запросов/мин с IP**.
@@ -202,9 +235,14 @@ Clover — подсистема проверки игрока на его ком
 - **Rate-limit**: 10/мин на download и upload с одного IP.
 - **Случайное имя файла** (`cl_<8 hex>.exe`) — против репутационных сигнатур AV.
 - **PE-проверка в psCommand** — игрок не выполнит подменённый/HTML-файл.
-- **Доступ двухконтурный**: глобальный `scans_min_level` + точечный `canScan`.
+- **Доступ по сессии**: сканы доступны любому авторизованному пользователю панели.
+- **Тихий auto-mode**: игрок не видит результатов скана, URL сервера и
+  упоминания самоудаления; нейтральная ошибка при детекте отладчика/VM.
+- **Retry аплоада**: до 4 попыток с backoff (0/2/5/10 с), успех = HTTP 2xx.
+- **Self-destruct с retry**: bat повторяет удаление до 15 раз (антивирус может
+  держать файл); удаляется и сам bat.
 - Все действия админов логируются (`scan_link_create`, `scan_link_delete`,
-  `scan_level_update`).
+  `signatures_update`).
 
 ---
 
@@ -228,7 +266,7 @@ your-site/
 
 ### Шаг 2. База данных
 
-Выполните `backend/scans.sql` (таблица сканов + колонка `can_scan`).
+Выполните `backend/scans.sql` (таблица сканов).
 DB-слой сайта должен реализовать методы, которые дергает `scans.js`:
 
 ```js
@@ -236,8 +274,6 @@ saveScanRecord(rec)            // upsert по rec.scanId; индекс-поля 
 getScanRecord(id)              // -> объект | null
 listScanRecords()              // -> [объекты], timestamp DESC
 searchScanRecords(q)           // LIKE по hwid/hostname/username/steam_ids/steam_names/admin_*
-getSetting(key, defaultValue)  // для 'scans_min_level'
-setSetting(key, value)
 ```
 
 Поле `payload` — это `JSON.stringify(rec)` целиком; индексные колонки
@@ -249,9 +285,7 @@ setSetting(key, value)
 const scans = require('./src/scans');              // поправьте require('./database') внутри на ваш DB-слой
 const handleScans = require('./src/scans.routes')({
     scans,
-    db,                  // ваш модуль БД
     getSessionFromReq,   // async (req) => session|null  (Bearer или cookie, как у вас)
-    requireSession,      // async (req, res, minLevel) => session|null
     sendJson, sendError, // ваши хелперы ответов
     getClientIp,         // req -> '1.2.3.4' (учитывайте x-forwarded-for)
     safeLog              // опционально: аудит действий
@@ -286,12 +320,13 @@ if (parsedUrl.pathname.startsWith('/api/scans/')) {
   `x-forwarded-host` (или `host`). За прокси (Traefik/Nginx/Cloudflare)
   убедитесь, что эти заголовки пробрасываются — иначе сканер будет стучаться
   на внутренний адрес.
-- Тело POST до 1 МБ (`MAX_REQUEST_BODY_BYTES` в `scans.routes.js`) — payload
-  скана обычно меньше, но при больших `results` следите за лимитом прокси.
+- Тело POST до 8 МБ (`MAX_REQUEST_BODY_BYTES` в `scans.routes.js`) — payload
+  с prefetch/shimcache/bam/процессами/драйверами заметно больше старого;
+  следите за лимитом прокси (`client_max_body_size` ≥ 8m).
 
 ### Шаг 6. Проверка
 
-1. Войдите админом (level ≥ 4 или `canScan=1`) → `/scans`.
+1. Войдите любым пользователем панели → `/scans`.
 2. Создайте ссылку → получите `cmdCommand`/`psCommand` и ссылку `/scan?id=…`.
 3. Откройте `/scan?id=…` в другом браузере → скачайте exe → запустите от
    администратора → введите пароль из ответа API.
@@ -311,7 +346,7 @@ if (parsedUrl.pathname.startsWith('/api/scans/')) {
 - **Ключ шифрования**: `CONFIG_KEY` в `scans.js` должен совпадать с ключом в
   бинаре. Чужой/пересобранный clover.exe с другим ключом работать не будет.
 - **Не храните ссылки дольше 10 минут**: если игрок не успевает — создайте новую.
-- **1 МБ лимит тела**: обрезанный проксей upload придёт как `DECRYPT_ERROR`.
+- **8 МБ лимит тела**: обрезанный проксей upload придёт как `DECRYPT_ERROR`.
 
 ---
 

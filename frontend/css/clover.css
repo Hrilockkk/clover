@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Clover · Fear Project — дизайн-система
+   Clover — дизайн-система
    Строгая зелёная идентика: однотонные поверхности, изумруд как акцент,
    никакого стекла и свечений. Шрифты: Golos Text · JetBrains Mono (данные).
    ========================================================================== */
@@ -70,7 +70,6 @@ body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.18); border-ra
 }
 .logo-mark.logo-lg { width: 52px; height: 52px; border-radius: 14px; }
 .brand-text { font-weight: 700; font-size: 15px; color: #fff; letter-spacing: -0.01em; }
-.brand-sub { font-weight: 500; color: var(--text-faint); font-size: 13px; }
 
 /* ─── Кнопки ────────────────────────────────────────────────────────────── */
 .btn {
@@ -146,6 +145,32 @@ body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.18); border-ra
 .tag-red { background: rgba(248, 113, 113, 0.10); color: #fda4af; border-color: rgba(248, 113, 113, 0.22); }
 .tag-muted { background: var(--surface-2); color: var(--text-faint); border-color: var(--border); }
 
+/* ─── Чипы (редакторы списков имён) ─────────────────────────────────────── */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px 3px 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    font-size: 12.5px;
+    color: var(--text);
+}
+.chip button {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    font-size: 13px;
+    line-height: 1;
+    border-radius: 50%;
+}
+.chip button:hover { color: var(--danger); }
+
 /* ─── Поля ввода ────────────────────────────────────────────────────────── */
 input, select, textarea {
     background: var(--surface-2);
@@ -177,31 +202,6 @@ select {
 select:disabled { opacity: 0.4; cursor: not-allowed; }
 input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--emerald); cursor: pointer; padding: 0; height: auto; }
 label.f-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-faint); margin-bottom: 6px; }
-
-/* ─── Свитч ─────────────────────────────────────────────────────────────── */
-.switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
-.switch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; z-index: 1; padding: 0; }
-.switch .track {
-    position: absolute; inset: 0;
-    border-radius: 999px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-strong);
-    transition: background 0.16s, border-color 0.16s;
-    pointer-events: none;
-}
-.switch .track::after {
-    content: '';
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: rgba(230, 242, 234, 0.45);
-    transition: transform 0.16s, background 0.16s;
-}
-.switch input:checked + .track { background: var(--emerald-deep); border-color: var(--emerald-deep); }
-.switch input:checked + .track::after { transform: translateX(16px); background: #eafff5; }
-.switch input:disabled { cursor: not-allowed; }
-.switch input:disabled + .track { opacity: 0.4; }
 
 /* ─── Таблицы ───────────────────────────────────────────────────────────── */
 table { border-collapse: collapse; }

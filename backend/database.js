@@ -209,8 +209,7 @@ function publicUser(row) {
         id: row.id,
         username: row.username,
         displayName: row.display_name || row.username,
-        level: Number(row.level),
-        canScan: Boolean(Number(row.can_scan))
+        level: Number(row.level)
     };
 }
 
@@ -222,13 +221,13 @@ async function getUserByUsername(username) {
     return sql.get('SELECT * FROM users WHERE username = ?', [String(username)]);
 }
 
-async function createUser({ username, password, displayName, level, canScan }) {
+async function createUser({ username, password, displayName, level }) {
     const id = crypto.randomBytes(8).toString('hex');
     await sql.run(
-        `INSERT INTO users (id, username, display_name, password_hash, level, can_scan, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, username, display_name, password_hash, level, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [id, String(username), String(displayName || username || ''), hashPassword(password),
-         Number(level) || 1, canScan ? 1 : 0, Date.now()]
+         Number(level) || 1, Date.now()]
     );
     return getUserById(id);
 }
@@ -251,7 +250,6 @@ async function updateUser(id, patch) {
     const params = [];
     if (patch.displayName !== undefined) { sets.push('display_name = ?'); params.push(String(patch.displayName)); }
     if (patch.level !== undefined) { sets.push('level = ?'); params.push(Number(patch.level) || 1); }
-    if (patch.canScan !== undefined) { sets.push('can_scan = ?'); params.push(patch.canScan ? 1 : 0); }
     if (!sets.length) return getUserById(id);
     params.push(String(id));
     await sql.run('UPDATE users SET ' + sets.join(', ') + ' WHERE id = ?', params);

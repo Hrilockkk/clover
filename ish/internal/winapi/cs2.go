@@ -18,9 +18,9 @@ const (
 	cs2ProcessQueryInfo = 0x0400 // PROCESS_QUERY_INFORMATION
 	cs2ProcessVMRead    = 0x0010 // PROCESS_VM_READ
 
-	cs2MemCommit       = 0x1000
-	cs2PageExecuteRW   = 0x40 // PAGE_EXECUTE_READWRITE
-	cs2PageExecuteWC   = 0x80 // PAGE_EXECUTE_WRITECOPY
+	cs2MemCommit     = 0x1000
+	cs2PageExecuteRW = 0x40 // PAGE_EXECUTE_READWRITE
+	cs2PageExecuteWC = 0x80 // PAGE_EXECUTE_WRITECOPY
 
 	cs2TCPTableOwnerPidAll = 5
 	cs2AFInet              = 2  // AF_INET
@@ -86,35 +86,47 @@ func GetCS2Connections(pid uint32) []models.CS2Connection {
 	return conns
 }
 
-func cs2GetTCPv4Connections(pid uint32) []models.CS2Connection {
+// getExtendedTcpTable fetches the TCP owner-PID table for an address family.
+//
+// Signature: GetExtendedTcpTable(pTcpTable, pdwSize, bOrder, ulAf, TableClass,
+// Reserved) — pdwSize is an IN/OUT *pointer*. A previous version passed the
+// buffer size by value into the pdwSize slot, so the API dereferenced the
+// size as a pointer and crashed (0xc0000005) whenever cs2.exe was running.
+//
+// Buffer strategy: start with 64 KiB (fits a few thousand rows) and grow to
+// the exact required size on ERROR_INSUFFICIENT_BUFFER.
+func getExtendedTcpTable(family uintptr) []byte {
 	iphlpapi := windows.NewLazySystemDLL("iphlpapi.dll")
 	proc := iphlpapi.NewProc("GetExtendedTcpTable")
 
-	var size uint32
-	r1, _, _ := proc.Call(
-		0, 0,
-		uintptr(unsafe.Pointer(&size)),
-		1, // AF_INET
-		cs2TCPTableOwnerPidAll,
-		0,
-	)
-	if r1 != 0 && r1 != 122 { // 122 = ERROR_INSUFFICIENT_BUFFER
-		return nil
+	size := uint32(64 * 1024)
+	for attempt := 0; attempt < 3; attempt++ {
+		buf := make([]byte, size)
+		r, _, _ := proc.Call(
+			uintptr(unsafe.Pointer(&buf[0])),
+			uintptr(unsafe.Pointer(&size)), // pdwSize — pointer!
+			0,                              // bOrder = FALSE
+			family,
+			cs2TCPTableOwnerPidAll,
+			0,
+		)
+		if r == 0 {
+			return buf
+		}
+		if r != 122 { // 122 = ERROR_INSUFFICIENT_BUFFER
+			return nil
+		}
+		if size == 0 || size > 64<<20 {
+			return nil
+		}
+		// size now holds the required length — loop with a buffer of that size
 	}
-	if size == 0 {
-		return nil
-	}
+	return nil
+}
 
-	buf := make([]byte, size)
-	r2, _, _ := proc.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(size),
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		cs2TCPTableOwnerPidAll,
-		0,
-	)
-	if r2 != 0 {
+func cs2GetTCPv4Connections(pid uint32) []models.CS2Connection {
+	buf := getExtendedTcpTable(cs2AFInet)
+	if len(buf) < 4 {
 		return nil
 	}
 
@@ -145,34 +157,8 @@ func cs2GetTCPv4Connections(pid uint32) []models.CS2Connection {
 }
 
 func cs2GetTCPv6Connections(pid uint32) []models.CS2Connection {
-	iphlpapi := windows.NewLazySystemDLL("iphlpapi.dll")
-	proc := iphlpapi.NewProc("GetExtendedTcpTable")
-
-	var size uint32
-	r1, _, _ := proc.Call(
-		0, 0,
-		uintptr(unsafe.Pointer(&size)),
-		cs2AFInet6,
-		cs2TCPTableOwnerPidAll,
-		0,
-	)
-	if r1 != 0 && r1 != 122 {
-		return nil
-	}
-	if size == 0 {
-		return nil
-	}
-
-	buf := make([]byte, size)
-	r2, _, _ := proc.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(size),
-		uintptr(unsafe.Pointer(&size)),
-		cs2AFInet6,
-		cs2TCPTableOwnerPidAll,
-		0,
-	)
-	if r2 != 0 {
+	buf := getExtendedTcpTable(cs2AFInet6)
+	if len(buf) < 4 {
 		return nil
 	}
 
@@ -192,9 +178,9 @@ func cs2GetTCPv6Connections(pid uint32) []models.CS2Connection {
 			continue
 		}
 		out = append(out, models.CS2Connection{
-			LocalAddress:  net.IP(row.LocalAddr[:]).String(),
+			LocalAddress:  cs2IPv6String(row.LocalAddr),
 			LocalPort:     cs2NtohsPort(row.LocalPort),
-			RemoteAddress: net.IP(row.RemoteAddr[:]).String(),
+			RemoteAddress: cs2IPv6String(row.RemoteAddr),
 			RemotePort:    cs2NtohsPort(row.RemotePort),
 			State:         cs2TCPStateName(row.State),
 		})
@@ -267,6 +253,15 @@ func cs2IsZeroIPv6(a [16]byte) bool {
 		}
 	}
 	return true
+}
+
+// cs2IPv6String formats a raw 16-byte address as text. Row data is copied out
+// first — printing a []uint16 view onto the (potentially shrinking) table
+// buffer is what crashed a previous version (0xc0000005 at 0x10000).
+func cs2IPv6String(a [16]byte) string {
+	b := make([]byte, 16)
+	copy(b, a[:])
+	return net.IP(b).String()
 }
 
 func cs2TCPStateName(state uint32) string {

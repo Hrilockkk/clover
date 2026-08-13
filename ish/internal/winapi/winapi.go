@@ -5,9 +5,7 @@ package winapi
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -142,10 +140,13 @@ func GetDrives() []string {
 				typeName = fmt.Sprintf("TYPE(%d)", driveType)
 			}
 			switch driveType {
-			case windows.DRIVE_FIXED, windows.DRIVE_REMOVABLE, windows.DRIVE_REMOTE, windows.DRIVE_RAMDISK:
+			case windows.DRIVE_FIXED, windows.DRIVE_REMOVABLE, windows.DRIVE_RAMDISK:
 				fmt.Printf("[DRIVE] %s: %s\n", letter, typeName)
 				drives = append(drives, strings.TrimSuffix(root, "\\"))
 			default:
+				// REMOTE is excluded on purpose: raw MFT/USN do not work on
+				// network shares, and a full filesystem walk over SMB can take
+				// hours.
 				fmt.Printf("[SKIP]  %s: %s (unsupported)\n", letter, typeName)
 			}
 		}
@@ -185,6 +186,22 @@ func DeviceIoControl(handle windows.Handle, code uint32, inBuf unsafe.Pointer, i
 	return windows.DeviceIoControl(handle, code, inPtr, inSize, outPtr, outSize, returned, nil)
 }
 
+// IsReparsePoint reports whether a directory entry is a junction/symlink.
+// Filesystem walks must skip these, otherwise junction cycles (e.g.
+// "AppData\Local\Application Data" -> itself) cause infinite recursion.
+// DirEntry.Info() on Windows reuses the FindFirstFile data — no extra syscall.
+func IsReparsePoint(entry os.DirEntry) bool {
+	info, err := entry.Info()
+	if err != nil {
+		return false
+	}
+	stat, ok := info.Sys().(*windows.Win32FileAttributeData)
+	if !ok {
+		return false
+	}
+	return stat.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
 func WinAttrsToString(path string) string {
 	ptr, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -219,112 +236,4 @@ func WinAttrsToString(path string) string {
 		return "NORMAL"
 	}
 	return strings.Join(out, "|")
-}
-
-// ListADSStreams returns the names of all Alternate Data Streams for a file.
-func ListADSStreams(path string) ([]string, error) {
-	kernel32 := windows.NewLazySystemDLL(obfuscate.KERNEL32())
-	procFindFirst := kernel32.NewProc("FindFirstStreamW")
-	procFindNext := kernel32.NewProc("FindNextStreamW")
-
-	const maxPath = 260 + 36
-	type findStreamData struct {
-		StreamSize  int64
-		cStreamName [maxPath]uint16
-	}
-
-	p, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var data findStreamData
-	ret, _, err := procFindFirst.Call(
-		uintptr(unsafe.Pointer(p)),
-		0, // FindStreamInfoStandard
-		uintptr(unsafe.Pointer(&data)),
-		0,
-	)
-	if ret == uintptr(^windows.Handle(0)) {
-		if err == windows.ERROR_HANDLE_EOF {
-			return nil, nil
-		}
-		return nil, err
-	}
-	h := windows.Handle(ret)
-	defer windows.CloseHandle(h)
-
-	var streams []string
-	for {
-		name := windows.UTF16ToString(data.cStreamName[:])
-		if name != "" && name != "::$DATA" {
-			streams = append(streams, name)
-		}
-		ret2, _, err2 := procFindNext.Call(uintptr(h), uintptr(unsafe.Pointer(&data)))
-		if ret2 == 0 {
-			if err2 == windows.ERROR_HANDLE_EOF {
-				break
-			}
-			break
-		}
-	}
-	return streams, nil
-}
-
-// ReadADS reads the contents of an ADS up to maxSize bytes.
-func ReadADS(path, streamName string, maxSize int64) ([]byte, error) {
-	fullPath := path + streamName
-	f, err := os.Open(fullPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	size := info.Size()
-	if size > maxSize {
-		size = maxSize
-	}
-	if size <= 0 {
-		return nil, nil
-	}
-	buf := make([]byte, size)
-	_, err = io.ReadFull(f, buf)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return nil, err
-	}
-	return buf, nil
-}
-
-// ZoneInfo holds parsed Zone.Identifier ADS fields.
-type ZoneInfo struct {
-	ZoneID       int
-	HostURL      string
-	ReferrerURL  string
-}
-
-// ParseZoneIdentifier parses a Zone.Identifier stream.
-func ParseZoneIdentifier(data []byte) ZoneInfo {
-	var zi ZoneInfo
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(line), "zoneid=") {
-			v := strings.TrimPrefix(line, "ZoneId=")
-			v = strings.TrimPrefix(v, "zoneid=")
-			zi.ZoneID, _ = strconv.Atoi(v)
-		} else if strings.HasPrefix(strings.ToLower(line), "hosturl=") {
-			zi.HostURL = strings.TrimPrefix(line, "HostUrl=")
-			zi.HostURL = strings.TrimPrefix(zi.HostURL, "hosturl=")
-			zi.HostURL = strings.TrimSpace(zi.HostURL)
-		} else if strings.HasPrefix(strings.ToLower(line), "referrerurl=") {
-			zi.ReferrerURL = strings.TrimPrefix(line, "ReferrerUrl=")
-			zi.ReferrerURL = strings.TrimPrefix(zi.ReferrerURL, "referrerurl=")
-			zi.ReferrerURL = strings.TrimSpace(zi.ReferrerURL)
-		}
-	}
-	return zi
 }

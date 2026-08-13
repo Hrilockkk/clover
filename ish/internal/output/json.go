@@ -26,14 +26,14 @@ type jsonResult struct {
 }
 
 type jsonOutput struct {
-	Total       int                   `json:"total"`
-	TimeSeconds float64               `json:"timeSeconds"`
-	Hardware    *models.HardwareInfo  `json:"hardware,omitempty"`
-	Steam       *models.SteamInfo     `json:"steam,omitempty"`
-	Items       []jsonResult          `json:"items"`
+	Total       int                  `json:"total"`
+	TimeSeconds float64              `json:"timeSeconds"`
+	Hardware    *models.HardwareInfo `json:"hardware,omitempty"`
+	Steam       *models.SteamInfo    `json:"steam,omitempty"`
+	Items       []jsonResult         `json:"items"`
 }
 
-func buildJSONOutput(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, elapsed time.Duration) jsonOutput {
+func buildJSONOutput(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration) jsonOutput {
 	var out jsonOutput
 	out.TimeSeconds = elapsed.Seconds()
 	out.Hardware = hw
@@ -138,13 +138,59 @@ func buildJSONOutput(results []models.FileInfo, dirs []models.DirInfo, named []m
 			Details: r.Protection,
 		})
 	}
+	for _, p := range prefetch {
+		out.Items = append(out.Items, jsonResult{
+			Type:     "prefetch",
+			Name:     p.Name,
+			Path:     p.Path,
+			Matched:  p.Matched,
+			Modified: p.Modified.Format("2006-01-02 15:04:05"),
+		})
+	}
+	for _, s := range shimcache {
+		out.Items = append(out.Items, jsonResult{
+			Type:     "shimcache",
+			Name:     s.Path,
+			Path:     s.Path,
+			Matched:  s.Matched,
+			Modified: s.Modified.Format("2006-01-02 15:04:05"),
+		})
+	}
+	for _, b := range bam {
+		out.Items = append(out.Items, jsonResult{
+			Type:     "bam_" + b.Source,
+			Name:     b.Path,
+			Path:     b.Path,
+			Matched:  b.Matched,
+			Details:  b.UserSID,
+			Modified: b.LastRun.Format("2006-01-02 15:04:05"),
+		})
+	}
+	for _, p := range processes {
+		out.Items = append(out.Items, jsonResult{
+			Type:    "process",
+			Name:    p.Name,
+			Path:    p.Path,
+			Matched: p.Matched,
+			Details: fmt.Sprintf("pid=%d", p.PID),
+		})
+	}
+	for _, d := range drivers {
+		out.Items = append(out.Items, jsonResult{
+			Type:     "driver_" + d.Kind,
+			Name:     d.Name,
+			Path:     d.ImagePath,
+			Matched:  d.Flag,
+			Modified: d.KeyModified.Format("2006-01-02 15:04:05"),
+		})
+	}
 	out.Total = len(out.Items)
 	return out
 }
 
 // PrintJSON emits all accumulated results as JSON.
-func PrintJSON(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, elapsed time.Duration) {
-	out := buildJSONOutput(results, dirs, named, delFiles, delDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, elapsed)
+func PrintJSON(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration) {
+	out := buildJSONOutput(results, dirs, named, delFiles, delDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bam, processes, drivers, elapsed)
 	b, err := json.Marshal(out)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
@@ -154,8 +200,8 @@ func PrintJSON(results []models.FileInfo, dirs []models.DirInfo, named []models.
 }
 
 // SaveJSONFile writes scan results as a pretty-printed JSON file.
-func SaveJSONFile(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, elapsed time.Duration, filePath string) error {
-	out := buildJSONOutput(results, dirs, named, delFiles, delDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, elapsed)
+func SaveJSONFile(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration, filePath string) error {
+	out := buildJSONOutput(results, dirs, named, delFiles, delDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bam, processes, drivers, elapsed)
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err

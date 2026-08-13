@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
-    <title>Сканы — Clover · Fear Project</title>
+    <title>Сканы — Clover</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -16,13 +16,14 @@
         <aside class="sidebar">
             <a href="/" class="sidebar-head">
                 <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
-                <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
+                <span class="brand-text">Clover</span>
             </a>
             <nav class="sidebar-nav">
                 <p class="sidebar-section">Проверки</p>
                 <button id="tabLinks" onclick="switchTab('links')" class="side-item active"><i class="ph ph-link-simple"></i>Ссылки</button>
                 <button id="tabScans" onclick="switchTab('scans')" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</button>
                 <button id="tabSearch" onclick="switchTab('search')" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</button>
+                <a href="/signatures" class="side-item"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
                 <p class="sidebar-section" id="adminSection" style="display:none">Управление</p>
                 <a href="/admin" id="adminLink" style="display:none" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
             </nav>
@@ -44,29 +45,6 @@
                     <div>
                         <h1 class="page-title">Ссылки на проверку</h1>
                         <p class="page-sub">Одноразовая ссылка живёт 10 минут и удаляется после загрузки результата</p>
-                    </div>
-                </div>
-
-                <!-- Access level (level 5 only) -->
-                <div id="levelBanner" class="hidden panel p-4 mb-5">
-                    <div class="flex items-center justify-between gap-4 flex-wrap">
-                        <div>
-                            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
-                                <i class="ph ph-shield-check text-amber-400"></i>
-                                Уровень доступа к сканам
-                            </h3>
-                            <p class="text-emerald-100/40 text-xs mt-1">Минимальный уровень пользователя для доступа к этой странице</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <select id="scansLevelSelect" class="min-w-[130px]">
-                                <option value="1">1 — Мл. модер</option>
-                                <option value="2">2 — Модер</option>
-                                <option value="3">3 — СТМ/СТА</option>
-                                <option value="4">4 — ГА</option>
-                                <option value="5">5 — Супер</option>
-                            </select>
-                            <button onclick="saveScansLevel()" class="btn btn-secondary btn-sm">Сохранить</button>
-                        </div>
                     </div>
                 </div>
 
@@ -235,7 +213,9 @@
         }
 
         function hitCount(rec) {
-            return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0);
+            const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
+            return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0)
+                + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers);
         }
 
         function fmtTs(v) {
@@ -283,16 +263,8 @@
                 document.getElementById('userLevel').textContent = 'Уровень ' + (currentUser.level || 0);
                 document.getElementById('userAvatar').textContent = (currentUser.displayName || currentUser.username || '?').trim().charAt(0);
 
-                // Load min level + check access
-                const lvlRes = await fetch('/api/scans/links', { headers: authHeaders() });
-                if (lvlRes.status === 403) { toast('Нет доступа к сканам — попросите админа включить «Разрешить сканы»', 'error'); setTimeout(() => window.location.href = '/', 2500); return; }
-                if (!lvlRes.ok) { window.location.href = '/auth?next=/scans'; return; }
-                const lvlData = await lvlRes.json();
-
-                // Show level banner + admin section for level 5
+                // Show admin section for level 5
                 if ((currentUser.level || 0) >= 5) {
-                    document.getElementById('levelBanner').classList.remove('hidden');
-                    document.getElementById('scansLevelSelect').value = String(lvlData.minLevel || 4);
                     document.getElementById('adminLink').style.display = '';
                     document.getElementById('adminSection').style.display = '';
                 }
@@ -302,13 +274,6 @@
                 window.location.href = '/auth?next=/scans';
             }
         })();
-
-        async function saveScansLevel() {
-            const lvl = parseInt(document.getElementById('scansLevelSelect').value);
-            const res = await fetch('/api/scans/level', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ minLevel: lvl }) });
-            if (res.ok) toast('Уровень доступа обновлён: ' + lvl);
-            else toast('Ошибка: ' + res.status, 'error');
-        }
 
         // ─── Links ─────────────────────────────────────────────
         async function createLink() {
@@ -522,8 +487,22 @@
             { id: 'amcache', label: 'Amcache', icon: 'ph-clock' },
             { id: 'shellbags', label: 'Shellbags', icon: 'ph-briefcase' },
             { id: 'appdata', label: 'AppData', icon: 'ph-hard-drives' },
-            { id: 'usb', label: 'USB', icon: 'ph-usb' }
+            { id: 'usb', label: 'USB', icon: 'ph-usb' },
+            { id: 'prefetch', label: 'Prefetch', icon: 'ph-rocket-launch' },
+            { id: 'shimcache', label: 'ShimCache', icon: 'ph-database' },
+            { id: 'bam', label: 'BAM', icon: 'ph-user-switch' },
+            { id: 'processes', label: 'Процессы', icon: 'ph-gear-six' },
+            { id: 'drivers', label: 'Драйверы', icon: 'ph-cpu' }
         ];
+
+        // Совпадения/флаги — наверх списка.
+        function matchedFirst(arr) {
+            return [...(arr || [])].sort((a, b) => ((b.matched || b.flag) ? 1 : 0) - ((a.matched || a.flag) ? 1 : 0));
+        }
+
+        function matchTag(v) {
+            return v ? `<span class="tag tag-red">${esc(v)}</span>` : '';
+        }
 
         function isValidRwx(r) {
             const addr = r.BaseAddress || r.baseAddress || 0;
@@ -546,6 +525,11 @@
                 case 'shellbags': return (rec.shellbags || []).length > 0;
                 case 'appdata': return (rec.appData || []).length > 0;
                 case 'usb': return (rec.hardware?.usb || []).length > 0 || (rec.usb || []).length > 0;
+                case 'prefetch': return (rec.prefetch || []).length > 0;
+                case 'shimcache': return (rec.shimcache || []).length > 0;
+                case 'bam': return (rec.bam || []).length > 0;
+                case 'processes': return (rec.processes || []).length > 0;
+                case 'drivers': return (rec.drivers || []).length > 0;
                 default: return false;
             }
         }
@@ -673,6 +657,51 @@
                         html += `</tbody></table>`;
                     } else html += '<p class="text-emerald-100/40">Нет USB устройств</p>';
                     break;
+                case 'prefetch': {
+                    const pf = matchedFirst(rec.prefetch);
+                    if (pf.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Prefetch — запуски программ (${pf.length})</h3><p class="text-emerald-100/40 text-xs mb-2">Имя программы из .pf файла; «Изменён» ≈ время последнего запуска</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Программа</th><th class="text-left py-2">Изменён</th><th class="text-left py-2">Создан</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
+                        pf.forEach(p => { html += `<tr class="border-b border-emerald-300/10${p.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs"><span class="block max-w-[300px] truncate" title="${esc(p.name)}">${esc(p.name)}</span></td><td class="text-emerald-100/40 text-xs">${fmtTs(p.modified)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(p.created)}</td><td class="py-2">${matchTag(p.matched)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-emerald-100/40">Нет данных Prefetch (нужны права администратора; Prefetch может быть выключен)</p>';
+                    break;
+                }
+                case 'shimcache': {
+                    const sc = matchedFirst(rec.shimcache);
+                    if (sc.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">ShimCache (${sc.length})</h3><p class="text-emerald-100/40 text-xs mb-2">Программы, которые видел shim процессов; ✓ — точно запускалась</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Путь</th><th class="text-left py-2">Изменён</th><th class="text-left py-2">Запуск</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
+                        sc.forEach(s => { html += `<tr class="border-b border-emerald-300/10${s.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs"><span class="block max-w-[380px] truncate" title="${esc(s.path)}">${esc(s.path)}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(s.modified)}</td><td class="text-xs">${s.executed ? '<span class="tag tag-green">да</span>' : '<span class="text-emerald-100/30">—</span>'}</td><td class="py-2">${matchTag(s.matched)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-emerald-100/40">Нет данных ShimCache</p>';
+                    break;
+                }
+                case 'bam': {
+                    const bm = matchedFirst(rec.bam);
+                    if (bm.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">BAM/DAM — история запусков по пользователям (${bm.length})</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Источник</th><th class="text-left py-2">Путь</th><th class="text-left py-2">Последний запуск</th><th class="text-left py-2">SID</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
+                        bm.forEach(b => { html += `<tr class="border-b border-emerald-300/10${b.matched ? ' bg-rose-500/5' : ''}"><td class="py-2"><span class="tag tag-muted">${esc(b.source)}</span></td><td class="py-2 mono text-xs"><span class="block max-w-[380px] truncate" title="${esc(b.path)}">${esc(b.path)}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(b.lastRun)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[120px] truncate" title="${esc(b.userSid)}">${esc(b.userSid)}</span></td><td class="py-2">${matchTag(b.matched)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-emerald-100/40">Нет данных BAM/DAM</p>';
+                    break;
+                }
+                case 'processes': {
+                    const pr = matchedFirst(rec.processes);
+                    if (pr.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Процессы на момент сканирования (${pr.length})</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">PID</th><th class="text-left py-2">Имя</th><th class="text-left py-2">Путь</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
+                        pr.forEach(p => { html += `<tr class="border-b border-emerald-300/10${p.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs text-emerald-100/40">${p.pid}</td><td class="py-2 whitespace-nowrap">${esc(p.name)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[380px] truncate" title="${esc(p.path || '')}">${esc(p.path || '-')}</span></td><td class="py-2">${matchTag(p.matched)}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-emerald-100/40">Нет данных о процессах</p>';
+                    break;
+                }
+                case 'drivers': {
+                    const dv = matchedFirst(rec.drivers);
+                    if (dv.length) {
+                        html += `<h3 class="text-amber-400 font-bold mb-2">Драйверы (${dv.length})</h3><p class="text-emerald-100/40 text-xs mb-2">blacklist — известный злоупотребляемый (BYOVD) драйвер; recent — недавно добавленный нестандартный драйвер</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Имя</th><th class="text-left py-2">Тип</th><th class="text-left py-2">Путь образа</th><th class="text-left py-2">Ключ изменён</th><th class="text-left py-2">Флаг</th></tr></thead><tbody>`;
+                        dv.forEach(d => { html += `<tr class="border-b border-emerald-300/10${d.flag ? ' bg-rose-500/5' : ''}"><td class="py-2 whitespace-nowrap">${esc(d.name)}</td><td class="text-xs text-emerald-100/40">${esc(d.kind)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[380px] truncate" title="${esc(d.imagePath || '')}">${esc(d.imagePath || '-')}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(d.keyModified)}</td><td class="py-2">${d.flag === 'blacklist' ? '<span class="tag tag-red">blacklist</span>' : d.flag ? '<span class="tag tag-amber">' + esc(d.flag) + '</span>' : ''}</td></tr>`; });
+                        html += `</tbody></table>`;
+                    } else html += '<p class="text-emerald-100/40">Нет данных о драйверах</p>';
+                    break;
+                }
                 default:
                     html += '<p class="text-emerald-100/40">Выберите категорию</p>';
             }

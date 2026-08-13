@@ -33,7 +33,7 @@ func TestExtractConfig(t *testing.T) {
 	if err := json.Unmarshal(extracted, &cfg2); err != nil {
 		t.Fatalf("unmarshal extracted: %v", err)
 	}
-	if cfg2 != cfg {
+	if cfg2.ScanID != cfg.ScanID || cfg2.UploadURL != cfg.UploadURL {
 		t.Fatalf("extracted config mismatch: got %+v, want %+v", cfg2, cfg)
 	}
 }
@@ -66,7 +66,7 @@ func TestEncryptDecryptConfig(t *testing.T) {
 	if err := json.Unmarshal(dec, &cfg2); err != nil {
 		t.Fatalf("unmarshal decrypted: %v", err)
 	}
-	if cfg2 != cfg {
+	if cfg2.ScanID != cfg.ScanID || cfg2.UploadURL != cfg.UploadURL || cfg2.PlayerPassword != cfg.PlayerPassword {
 		t.Fatalf("decrypted config mismatch: got %+v, want %+v", cfg2, cfg)
 	}
 }

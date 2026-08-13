@@ -12,7 +12,7 @@ import (
 	"scanner/internal/models"
 )
 
-func SaveConsoleResults(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, elapsed time.Duration, outDir string) error {
+func SaveConsoleResults(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration, outDir string) error {
 	if outDir == "" {
 		outDir = "."
 	}
@@ -60,7 +60,7 @@ func SaveConsoleResults(results []models.FileInfo, dirs []models.DirInfo, named 
 		fmt.Fprintf(file, "\n")
 	}
 
-	all := len(results) + len(delFiles) + len(delDirs) + len(dirs) + len(named) + len(shellbags) + len(appData) + len(amcache) + len(cs2Conns) + len(cs2RWX)
+	all := len(results) + len(delFiles) + len(delDirs) + len(dirs) + len(named) + len(shellbags) + len(appData) + len(amcache) + len(cs2Conns) + len(cs2RWX) + len(prefetch) + len(shimcache) + len(bam) + len(processes) + len(drivers)
 	fmt.Fprintf(file, "Total Items Found: %d\n\n", all)
 
 	if len(amcache) > 0 {
@@ -132,6 +132,66 @@ func SaveConsoleResults(results []models.FileInfo, dirs []models.DirInfo, named 
 		fmt.Fprintf(file, "--- CS2 RWX Executable Memory ---\n")
 		for _, r := range cs2RWX {
 			fmt.Fprintf(file, "[CS2] RWX @ 0x%x  size=%d KB  %s  %s\n", uint64(r.BaseAddress), uint64(r.RegionSize)/1024, r.Protection, r.RegionType)
+		}
+		fmt.Fprintln(file)
+	}
+
+	if len(prefetch) > 0 {
+		fmt.Fprintf(file, "--- Prefetch (launched programs, %d) ---\n", len(prefetch))
+		for _, p := range prefetch {
+			mark := ""
+			if p.Matched != "" {
+				mark = "  <<< MATCHED: " + p.Matched
+			}
+			fmt.Fprintf(file, "[PF] %s  last=%s%s\n", p.Name, p.Modified.Format("2006-01-02 15:04:05"), mark)
+		}
+		fmt.Fprintln(file)
+	}
+
+	if len(shimcache) > 0 {
+		fmt.Fprintf(file, "--- ShimCache (%d) ---\n", len(shimcache))
+		for _, s := range shimcache {
+			mark := ""
+			if s.Matched != "" {
+				mark = "  <<< MATCHED: " + s.Matched
+			}
+			fmt.Fprintf(file, "[SHIM] %s  mod=%s%s\n", s.Path, s.Modified.Format("2006-01-02 15:04:05"), mark)
+		}
+		fmt.Fprintln(file)
+	}
+
+	if len(bam) > 0 {
+		fmt.Fprintf(file, "--- BAM/DAM (%d) ---\n", len(bam))
+		for _, b := range bam {
+			mark := ""
+			if b.Matched != "" {
+				mark = "  <<< MATCHED: " + b.Matched
+			}
+			fmt.Fprintf(file, "[%s] %s  lastRun=%s  sid=%s%s\n", b.Source, b.Path, b.LastRun.Format("2006-01-02 15:04:05"), b.UserSID, mark)
+		}
+		fmt.Fprintln(file)
+	}
+
+	if len(processes) > 0 {
+		fmt.Fprintf(file, "--- Processes (%d) ---\n", len(processes))
+		for _, p := range processes {
+			mark := ""
+			if p.Matched != "" {
+				mark = "  <<< MATCHED: " + p.Matched
+			}
+			fmt.Fprintf(file, "[PROC] pid=%d %s  %s%s\n", p.PID, p.Name, p.Path, mark)
+		}
+		fmt.Fprintln(file)
+	}
+
+	if len(drivers) > 0 {
+		fmt.Fprintf(file, "--- Drivers (%d) ---\n", len(drivers))
+		for _, d := range drivers {
+			mark := ""
+			if d.Flag != "" {
+				mark = "  <<< FLAG: " + d.Flag
+			}
+			fmt.Fprintf(file, "[DRV] %s (%s)  %s  keyMod=%s%s\n", d.Name, d.Kind, d.ImagePath, d.KeyModified.Format("2006-01-02 15:04:05"), mark)
 		}
 		fmt.Fprintln(file)
 	}

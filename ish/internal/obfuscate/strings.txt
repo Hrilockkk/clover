@@ -11,16 +11,40 @@ JSON_PREFIX=scan_results_
 JSON_SUFFIX=.json
 CLOVER_TAG=[CLOVER]
 UPLOAD_TAG=[UPLOAD]
-DEBUG_MSG=Debugger detected. Exiting.
-SELF_DESTRUCT_MSG=Scan complete. Self-destructing...
 KERNEL32=kernel32.dll
 NTDLL=ntdll.dll
 IS_DEBUGGER_PRESENT=IsDebuggerPresent
 CHECK_REMOTE_DEBUGGER=CheckRemoteDebuggerPresent
 GET_CURRENT_PROCESS=GetCurrentProcess
 NT_QUERY_INFO_PROCESS=NtQueryInformationProcess
+OPEN_PROCESS_PROC=OpenProcess
+QUERY_FULL_IMAGE_PROC=QueryFullProcessImageNameW
 CMD=cmd
 CMD_C=/c
 BAT_PREFIX=sd_*.bat
-PING_WAIT=ping 127.0.0.1 -n 3 >nul
-DEL_FMT=@echo off\n%s\ndel /f "%s"\ndel /f "%%~f0"\n
+PING_WAIT=ping 127.0.0.1 -n 2 >nul
+DEL_FMT=@echo off\nset "TARGET=@EXEPATH@"\nset /a TRIES=0\n:retry\nping 127.0.0.1 -n 2 >nul\ndel /f "%TARGET%" >nul 2>&1\nif not exist "%TARGET%" goto cleanup\nset /a TRIES+=1\nif %TRIES% lss 15 goto retry\n:cleanup\ndel /f "%~f0"\n
+
+# Player-facing messages (auto mode stays quiet on purpose).
+MSG_SCAN_DONE=Scan complete. You can close this window.
+MSG_SAVED_LOCAL=Connection failed. Results saved locally - please tell the administrator.
+ERR_INIT=Initialization failed (0x8000). Please restart the program.
+
+# Anti-analysis lists (comma-separated).
+ANTI_VM_TOKENS=VMWARE,VBOX,VIRTUAL,QEMU,XEN,PARALLELS,HYPER-V,BOCHS,INSIDE,SANDCASTLE
+ANTI_VM_DRIVERS=vmci.sys,vmhgfs.sys,vmmemctl.sys,vmrawdsk.sys,vboxguest.sys,vboxmouse.sys,vboxsf.sys,vboxvideo.sys
+ANTI_SANDBOX_DLLS=sbiedll.dll,sxin.dll,api_log.dll,dir_watch.dll
+ANTI_TOOL_NAMES=x64dbg,x32dbg,ollydbg,windbg,idaq,idag,idaw,ida64,immunity,decompile,ghidra,dnspy,cheatengine,cheat engine,processhacker,procmon,procexp,tcpview,wireshark,fiddler
+QPC_PROC=QueryPerformanceCounter
+QPF_PROC=QueryPerformanceFrequency
+
+# Collectors (registry paths / folder names).
+PF_DIR_NAME=Prefetch
+REG_SHIMCACHE_KEY=SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache
+REG_SHIMCACHE_VAL=AppCompatCache
+REG_BAM_KEY=SYSTEM\CurrentControlSet\Services\bam\State\UserSettings
+REG_DAM_KEY=SYSTEM\CurrentControlSet\Services\dam\State\UserSettings
+REG_SERVICES_KEY=SYSTEM\CurrentControlSet\Services
+
+# Known-abused / BYOVD driver blacklist (comma-separated, lowercase).
+DRIVER_BLACKLIST=iqvw64e.sys,iqvw64.sys,dbutil_2_3.sys,capcom.sys,rtcore64.sys,rtcore32.sys,winring0.sys,winring0x64.sys,gdrv.sys,inpoutx64.sys,inpout32.sys,ntiolib.sys,ntiolib_x64.sys,msio64.sys,msio32.sys,physmem.sys,kprocesshacker.sys,mhyprot2.sys,mhyprot.sys,kdstinker.sys,amifldrv64.sys,asio64.sys,gmer64.sys,hw.sys,kguard.sys,knpcdev.sys,my.sys,pcdrv64.sys,pfc64.sys,rambpf64.sys,smepcap.sys,speedfan.sys,tbs.sys,vmdrv.sys,wsprvt.sys,xhunter1.sys,zam64.sys,zamguard64.sys
