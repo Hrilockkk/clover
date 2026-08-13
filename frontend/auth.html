@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -7,42 +7,41 @@
     <title>Вход — Clover</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/clover.css">
     <style>
-        .auth-card { animation: card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-        @keyframes card-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
-        .shake { animation: shake 0.4s ease; }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-7px); } 75% { transform: translateX(7px); } }
+        .auth-card { animation: card-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        @keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .shake { animation: shake 0.35s ease; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
         @media (prefers-reduced-motion: reduce) { .auth-card, .shake { animation: none; } }
     </style>
 </head>
 <body class="clover-field">
-    <div class="scanline"></div>
     <div class="relative min-h-screen flex items-center justify-center p-6">
-        <div class="glass p-8 max-w-sm w-full auth-card">
+        <div class="panel p-8 max-w-sm w-full auth-card">
             <div class="text-center mb-7">
-                <a href="/" class="radar-badge radar-lg mb-5">
-                    <i class="ph ph-clover text-3xl text-emerald-300"></i>
+                <a href="/" class="logo-mark logo-lg mb-5 inline-flex">
+                    <i class="ph ph-clover text-2xl"></i>
                 </a>
-                <h1 class="font-display text-xl font-semibold text-white">Вход в Clover</h1>
-                <p class="text-emerald-200/40 text-sm mt-2">Fear Project · панель проверки игроков</p>
+                <h1 class="text-lg font-bold text-white">Вход в Clover</h1>
+                <p class="text-emerald-200/40 text-[13px] mt-1.5">Fear Project · панель проверки игроков</p>
             </div>
             <form id="loginForm" class="space-y-4">
                 <div>
-                    <label for="username" class="block text-xs font-semibold text-emerald-200/50 uppercase tracking-wider mb-2">Логин</label>
+                    <label for="username" class="f-label">Логин</label>
                     <input id="username" name="username" type="text" autocomplete="username" class="w-full" required autofocus>
                 </div>
                 <div>
-                    <label for="password" class="block text-xs font-semibold text-emerald-200/50 uppercase tracking-wider mb-2">Пароль</label>
+                    <label for="password" class="f-label">Пароль</label>
                     <input id="password" name="password" type="password" autocomplete="current-password" class="w-full" required>
                 </div>
-                <p id="error" class="hidden text-rose-300 text-sm text-center"></p>
-                <button type="submit" id="submitBtn" class="btn btn-primary w-full">
+                <p id="error" class="hidden text-rose-300 text-[13px] text-center"></p>
+                <button type="submit" id="submitBtn" class="btn btn-primary btn-lg btn-block">
                     <i class="ph ph-sign-in"></i>Войти
                 </button>
             </form>
-            <p class="text-center mt-6"><a href="/" class="text-emerald-200/40 hover:text-emerald-100 text-xs transition-colors">← На главную</a></p>
+            <p class="text-center mt-6"><a href="/" class="footer-link">← На главную</a></p>
         </div>
     </div>
 
@@ -68,6 +67,7 @@
             const btn = document.getElementById('submitBtn');
             errEl.classList.add('hidden');
             btn.disabled = true;
+            btn.classList.add('is-loading');
             try {
                 const res = await fetch('/api/login', {
                     method: 'POST',
@@ -93,6 +93,7 @@
                 errEl.classList.remove('hidden');
             } finally {
                 btn.disabled = false;
+                btn.classList.remove('is-loading');
             }
         });
     </script>

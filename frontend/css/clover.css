@@ -1,285 +1,414 @@
 /* ==========================================================================
    Clover · Fear Project — дизайн-система
-   Ночное клеверное поле: глубокая зелень, изумрудное стекло, радар-развёртка.
-   Шрифты: Unbounded (заголовки) · Golos Text (текст) · JetBrains Mono (данные)
+   Строгая зелёная идентика: однотонные поверхности, изумруд как акцент,
+   никакого стекла и свечений. Шрифты: Golos Text · JetBrains Mono (данные).
    ========================================================================== */
 
 :root {
-    --field: #050d09;            /* фон страницы — ночное поле */
-    --glass-hi: rgba(52, 211, 153, 0.10);
-    --glass-lo: rgba(9, 26, 18, 0.55);
-    --edge: rgba(110, 231, 183, 0.18);
-    --edge-strong: rgba(110, 231, 183, 0.32);
-    --ink: #e8f6ee;              /* основной текст */
-    --ink-dim: rgba(167, 243, 208, 0.55);
-    --ink-faint: rgba(167, 243, 208, 0.38);
+    --bg: #060f0a;
+    --surface: #0b1710;
+    --surface-2: #0f1d14;
+    --surface-3: #132417;
+    --border: rgba(110, 231, 183, 0.10);
+    --border-strong: rgba(110, 231, 183, 0.20);
+    --text: #e6f2ea;
+    --text-dim: rgba(230, 242, 234, 0.62);
+    --text-faint: rgba(230, 242, 234, 0.38);
     --emerald: #34d399;
+    --emerald-deep: #10b981;
     --mint: #6ee7b7;
     --lime: #a3e635;
-    --danger: #fb7185;
+    --danger: #f87171;
     --amber: #fbbf24;
-    --shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+    --radius-panel: 10px;
+    --radius-ctl: 8px;
+    --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 body {
-    font-family: 'Golos Text', 'Inter', system-ui, sans-serif;
-    color: var(--ink);
-    background: var(--field);
-    background-image:
-        radial-gradient(ellipse 80% 60% at 70% -10%, rgba(52, 211, 153, 0.14), transparent 60%),
-        radial-gradient(ellipse 60% 50% at 10% 110%, rgba(163, 230, 53, 0.07), transparent 60%);
-    background-attachment: fixed;
+    font-family: 'Golos Text', system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.5;
     scrollbar-width: thin;
-    scrollbar-color: rgba(110, 231, 183, 0.2) transparent;
+    scrollbar-color: rgba(110, 231, 183, 0.18) transparent;
     -webkit-font-smoothing: antialiased;
 }
 body::-webkit-scrollbar { width: 8px; }
-body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.2); border-radius: 4px; }
+body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.18); border-radius: 4px; }
 
-.font-display { font-family: 'Unbounded', 'Golos Text', sans-serif; }
 .mono { font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 13px; }
+.font-display { font-family: 'Golos Text', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
 
-/* ─── Клеверное поле (фоновый паттерн) ──────────────────────────────────── */
+/* Клеверное поле — только на публичных страницах (лендинг, вход, игрок) */
 .clover-field {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='10' y='30' font-size='26' fill='rgba(110,231,183,0.045)'%3E%E2%98%98%3C/text%3E%3Ctext x='70' y='90' font-size='20' fill='rgba(163,230,53,0.035)'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
+    background-image:
+        radial-gradient(ellipse 70% 45% at 50% -10%, rgba(52, 211, 153, 0.07), transparent 65%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='10' y='30' font-size='26' fill='rgba(110,231,183,0.028)'%3E%E2%98%98%3C/text%3E%3Ctext x='70' y='90' font-size='20' fill='rgba(163,230,53,0.022)'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
 }
 
-/* ─── Фирменный значок: клевер + радарная развёртка ────────────────────── */
-.radar-badge {
-    position: relative;
+/* ─── Поверхности ───────────────────────────────────────────────────────── */
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+}
+.panel-2 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-ctl); }
+
+/* ─── Логотип ───────────────────────────────────────────────────────────── */
+.logo-mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 14px;
-    overflow: hidden;
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(110, 231, 183, 0.22);
+    color: var(--emerald);
     flex: none;
-    background: linear-gradient(160deg, rgba(52, 211, 153, 0.16), rgba(52, 211, 153, 0.05));
-    border: 1px solid rgba(110, 231, 183, 0.28);
-    box-shadow: inset 0 1px 0 rgba(167, 243, 208, 0.12);
 }
-.radar-badge::before {
-    content: '';
-    position: absolute;
-    inset: -45%;
-    background: conic-gradient(from 0deg, transparent 0deg, rgba(52, 211, 153, 0.4) 36deg, transparent 72deg);
-    animation: radar-sweep 4.5s linear infinite;
-}
-.radar-badge > i { position: relative; z-index: 1; }
-.radar-badge.radar-lg { width: 64px; height: 64px; border-radius: 20px; }
-@keyframes radar-sweep { to { transform: rotate(360deg); } }
-
-/* ─── Сканирующая линия при загрузке страницы (один проход) ─────────────── */
-.scanline {
-    position: fixed;
-    left: 0; right: 0; top: 0;
-    height: 2px;
-    z-index: 500;
-    pointer-events: none;
-    background: linear-gradient(90deg, transparent, rgba(110, 231, 183, 0.75), transparent);
-    box-shadow: 0 0 28px 6px rgba(52, 211, 153, 0.30);
-    opacity: 0;
-    animation: scanline-sweep 1.05s cubic-bezier(0.4, 0, 0.2, 1) 0.12s both;
-}
-@keyframes scanline-sweep {
-    from { transform: translateY(-8vh); opacity: 0; }
-    12%  { opacity: 1; }
-    85%  { opacity: 1; }
-    to   { transform: translateY(104vh); opacity: 0; }
-}
-
-/* ─── Стеклянные панели ─────────────────────────────────────────────────── */
-.glass,
-.glass-panel {
-    position: relative;
-    background: linear-gradient(165deg, var(--glass-hi), var(--glass-lo));
-    border: 1px solid var(--edge);
-    backdrop-filter: blur(16px);
-    box-shadow: var(--shadow), inset 0 1px 0 rgba(167, 243, 208, 0.07);
-}
-.glass { border-radius: 20px; }
-
-/* ─── Теги / бейджи ─────────────────────────────────────────────────────── */
-.tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 12px;
-    border-radius: 9999px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-}
-.tag-em, .tag-green { background: rgba(52, 211, 153, 0.14); color: var(--mint); border: 1px solid rgba(110, 231, 183, 0.25); }
-.tag-lime { background: rgba(163, 230, 53, 0.12); color: #bef264; border: 1px solid rgba(163, 230, 53, 0.25); }
-.tag-amber { background: rgba(245, 158, 11, 0.12); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.25); }
-.tag-red { background: rgba(244, 63, 94, 0.14); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.25); }
+.logo-mark.logo-lg { width: 52px; height: 52px; border-radius: 14px; }
+.brand-text { font-weight: 700; font-size: 15px; color: #fff; letter-spacing: -0.01em; }
+.brand-sub { font-weight: 500; color: var(--text-faint); font-size: 13px; }
 
 /* ─── Кнопки ────────────────────────────────────────────────────────────── */
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 10px 20px;
-    border-radius: 12px;
+    gap: 7px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: var(--radius-ctl);
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13.5px;
+    font-family: inherit;
     cursor: pointer;
-    transition: all 0.16s ease;
+    transition: background 0.14s, border-color 0.14s, color 0.14s;
     border: 1px solid transparent;
     text-decoration: none;
     user-select: none;
+    white-space: nowrap;
 }
-.btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
-.btn-primary {
-    background: linear-gradient(135deg, var(--emerald), var(--lime));
-    color: #05240f;
-    font-weight: 700;
-    box-shadow: 0 6px 20px rgba(52, 211, 153, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--emerald); color: #04170e; }
+.btn-primary:hover:not(:disabled) { background: #4adeab; }
+.btn-secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-3); border-color: rgba(110, 231, 183, 0.32); }
+.btn-ghost { background: transparent; color: var(--text-dim); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.btn-danger { background: transparent; border-color: rgba(248, 113, 113, 0.3); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.10); }
+.btn-amber { background: var(--amber); color: #1a1205; }
+.btn-amber:hover:not(:disabled) { background: #f59e0b; }
+/* Алиасы для обратной совместимости разметки */
+.btn-glass { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
+.btn-glass:hover:not(:disabled) { background: var(--surface-3); border-color: rgba(110, 231, 183, 0.32); }
+.btn-red { background: transparent; border-color: rgba(248, 113, 113, 0.3); color: var(--danger); }
+.btn-red:hover:not(:disabled) { background: rgba(248, 113, 113, 0.10); }
+.btn-icon { padding: 0; width: 32px; height: 32px; flex: none; }
+.btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; }
+.btn-lg { height: 44px; padding: 0 22px; font-size: 15px; border-radius: 10px; }
+.btn-block { width: 100%; }
+
+/* Спиннер в кнопке: <button class="btn btn-primary is-loading"> */
+.btn.is-loading { pointer-events: none; opacity: 0.75; }
+.btn.is-loading > * { visibility: hidden; }
+.btn.is-loading::after {
+    content: '';
+    position: absolute;
+    width: 15px; height: 15px;
+    border: 2px solid rgba(0, 0, 0, 0.25);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
 }
-.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 8px 26px rgba(52, 211, 153, 0.35), inset 0 1px 0 rgba(255,255,255,0.25); transform: translateY(-1px); }
-.btn-glass, .btn-ghost {
-    background: rgba(110, 231, 183, 0.07);
-    border-color: rgba(110, 231, 183, 0.28);
-    color: #a7f3d0;
+.btn-secondary.is-loading::after, .btn-ghost.is-loading::after, .btn-danger.is-loading::after { border-color: rgba(230,242,234,0.2); border-top-color: var(--mint); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Бейджи ────────────────────────────────────────────────────────────── */
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    border: 1px solid transparent;
 }
-.btn-glass:hover, .btn-ghost:hover { background: rgba(110, 231, 183, 0.15); color: #d1fae5; border-color: var(--edge-strong); }
-.btn-amber { background: var(--amber); color: #1a1a1a; }
-.btn-amber:hover { background: #d97706; }
-.btn-red { background: rgba(244, 63, 94, 0.18); color: var(--danger); border-color: rgba(244, 63, 94, 0.25); }
-.btn-red:hover { background: rgba(244, 63, 94, 0.3); }
-.btn-icon { padding: 8px 10px; }
+.tag-em, .tag-green { background: rgba(52, 211, 153, 0.12); color: var(--mint); border-color: rgba(110, 231, 183, 0.20); }
+.tag-lime { background: rgba(163, 230, 53, 0.10); color: #bef264; border-color: rgba(163, 230, 53, 0.20); }
+.tag-amber { background: rgba(251, 191, 36, 0.10); color: #fcd34d; border-color: rgba(251, 191, 36, 0.22); }
+.tag-red { background: rgba(248, 113, 113, 0.10); color: #fda4af; border-color: rgba(248, 113, 113, 0.22); }
+.tag-muted { background: var(--surface-2); color: var(--text-faint); border-color: var(--border); }
 
 /* ─── Поля ввода ────────────────────────────────────────────────────────── */
 input, select, textarea {
-    background: rgba(4, 17, 11, 0.6);
-    border: 1px solid rgba(110, 231, 183, 0.22);
-    border-radius: 10px;
-    padding: 9px 13px;
-    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-ctl);
+    padding: 0 12px;
+    height: 38px;
+    color: var(--text);
     font-size: 14px;
     font-family: inherit;
     outline: none;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color 0.14s, box-shadow 0.14s;
 }
+textarea { height: auto; padding: 10px 12px; }
 input:focus, select:focus, textarea:focus {
     border-color: var(--emerald);
-    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14);
 }
-input::placeholder { color: rgba(167, 243, 208, 0.28); }
-select { cursor: pointer; }
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+select {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236ee7b7' stroke-opacity='0.5' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
 select:disabled { opacity: 0.4; cursor: not-allowed; }
-input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--emerald); cursor: pointer; padding: 0; }
+input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--emerald); cursor: pointer; padding: 0; height: auto; }
+label.f-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-faint); margin-bottom: 6px; }
 
-/* ─── Переключатель (switch) ────────────────────────────────────────────── */
-.switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
+/* ─── Свитч ─────────────────────────────────────────────────────────────── */
+.switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; z-index: 1; padding: 0; }
 .switch .track {
     position: absolute; inset: 0;
     border-radius: 999px;
-    background: rgba(110, 231, 183, 0.10);
-    border: 1px solid rgba(110, 231, 183, 0.25);
-    transition: all 0.18s;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    transition: background 0.16s, border-color 0.16s;
     pointer-events: none;
 }
 .switch .track::after {
     content: '';
     position: absolute;
     top: 2px; left: 2px;
-    width: 16px; height: 16px;
+    width: 14px; height: 14px;
     border-radius: 50%;
-    background: rgba(167, 243, 208, 0.45);
-    transition: all 0.18s;
+    background: rgba(230, 242, 234, 0.45);
+    transition: transform 0.16s, background 0.16s;
 }
-.switch input:checked + .track { background: rgba(52, 211, 153, 0.35); border-color: rgba(52, 211, 153, 0.6); }
-.switch input:checked + .track::after { transform: translateX(18px); background: var(--mint); box-shadow: 0 0 10px rgba(52, 211, 153, 0.55); }
+.switch input:checked + .track { background: var(--emerald-deep); border-color: var(--emerald-deep); }
+.switch input:checked + .track::after { transform: translateX(16px); background: #eafff5; }
 .switch input:disabled { cursor: not-allowed; }
 .switch input:disabled + .track { opacity: 0.4; }
 
 /* ─── Таблицы ───────────────────────────────────────────────────────────── */
+table { border-collapse: collapse; }
 table th {
-    color: var(--ink-faint);
+    color: var(--text-faint);
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.06em;
     font-weight: 600;
+    background: var(--surface);
 }
+thead.sticky th { position: sticky; top: 0; z-index: 5; }
 tbody tr { transition: background 0.12s; }
-tbody tr:hover { background: rgba(110, 231, 183, 0.05); }
-.th { color: var(--ink-faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+tbody tr:hover { background: rgba(110, 231, 183, 0.04); }
+.th { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
 
-/* ─── Аватар с инициалом ────────────────────────────────────────────────── */
+/* Моно-ячейка с копированием по клику */
+.copy-cell { cursor: copy; border-radius: 6px; padding: 1px 6px; transition: background 0.12s; }
+.copy-cell:hover { background: rgba(110, 231, 183, 0.10); }
+
+/* ─── Аватар ────────────────────────────────────────────────────────────── */
 .avatar {
-    width: 34px; height: 34px;
-    border-radius: 12px;
+    width: 32px; height: 32px;
+    border-radius: 9px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Unbounded', sans-serif;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 13px;
-    color: #05240f;
-    background: linear-gradient(135deg, var(--emerald), var(--lime));
+    color: #04170e;
+    background: var(--emerald);
     flex: none;
     text-transform: uppercase;
 }
 
-/* ─── Карточка-статистика ───────────────────────────────────────────────── */
-.stat-num { font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 26px; line-height: 1.1; color: #fff; }
+/* ─── Статистика ────────────────────────────────────────────────────────── */
+.stat-num { font-weight: 700; font-size: 24px; line-height: 1.1; color: #fff; font-variant-numeric: tabular-nums; }
 
-/* ─── Модалки и тосты ───────────────────────────────────────────────────── */
+/* ─── Модалки ───────────────────────────────────────────────────────────── */
 .modal-backdrop {
     position: fixed; inset: 0; z-index: 200;
-    background: rgba(2, 8, 5, 0.72);
-    backdrop-filter: blur(6px);
+    background: rgba(2, 8, 5, 0.66);
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: fade-in 0.15s ease;
+    padding: 16px;
+    animation: fade-in 0.14s ease;
+}
+.modal-card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-pop);
+    animation: modal-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-#toast { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
-.toast-item { padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; animation: slide-in 0.2s ease; backdrop-filter: blur(8px); }
-.toast-success { background: rgba(34, 197, 94, 0.16); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
-.toast-error { background: rgba(244, 63, 94, 0.16); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+/* ─── Тосты ─────────────────────────────────────────────────────────────── */
+#toast { position: fixed; bottom: 20px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+.toast-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 16px;
+    border-radius: var(--radius-ctl);
+    font-size: 13.5px;
+    font-weight: 500;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--emerald);
+    color: var(--text);
+    box-shadow: var(--shadow-pop);
+    animation: slide-in 0.18s ease;
+}
+.toast-error { border-left-color: var(--danger); }
 @keyframes slide-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-/* ─── Ховер карточек ────────────────────────────────────────────────────── */
-.card-hover { transition: border-color 0.16s, transform 0.16s, box-shadow 0.16s; }
-.card-hover:hover { border-color: rgba(163, 230, 53, 0.4); transform: translateY(-2px); box-shadow: 0 20px 54px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(163, 230, 53, 0.08); }
+/* ─── Скелетон и пустые состояния ───────────────────────────────────────── */
+.skeleton {
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.3s infinite;
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.empty-state { text-align: center; padding: 44px 20px; color: var(--text-faint); }
+.empty-state i { font-size: 28px; display: block; margin-bottom: 10px; opacity: 0.5; }
 
-/* ─── Бренд в шапке ─────────────────────────────────────────────────────── */
-.brand-text { font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 15px; color: #fff; letter-spacing: 0.01em; }
-.brand-sub { font-family: 'Golos Text', sans-serif; font-weight: 500; color: var(--ink-faint); font-size: 13px; }
+/* ─── Каркас приложения (сайдбар) ───────────────────────────────────────── */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+    width: 236px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+.sidebar-head { display: flex; align-items: center; gap: 10px; padding: 16px; border-bottom: 1px solid var(--border); text-decoration: none; }
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-section { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-faint); padding: 14px 10px 6px; }
+.side-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-ctl);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-decoration: none;
+    border: none;
+    background: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.13s, color 0.13s;
+    border-left: 3px solid transparent;
+}
+.side-item:hover { background: var(--surface-2); color: var(--text); }
+.side-item.active { background: rgba(52, 211, 153, 0.10); color: var(--mint); border-left-color: var(--emerald); border-radius: 0 var(--radius-ctl) var(--radius-ctl) 0; margin-left: 3px; width: calc(100% - 3px); }
+.side-item i { font-size: 17px; }
+.sidebar-user { border-top: 1px solid var(--border); padding: 12px; display: flex; align-items: center; gap: 10px; }
+.sidebar-user .u-meta { min-width: 0; flex: 1; }
+.sidebar-user .u-name { font-size: 13.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-user .u-sub { font-size: 11.5px; color: var(--text-faint); }
 
-/* ─── Навигация в шапке ─────────────────────────────────────────────────── */
-.nav-link {
-    display: inline-flex;
+.app-content { flex: 1; min-width: 0; padding: 24px 28px 48px; max-width: 1440px; }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.page-title { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+.page-sub { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
+.page-actions { display: flex; gap: 8px; flex: none; }
+
+/* Мобильная версия: сайдбар → верхняя лента */
+@media (max-width: 900px) {
+    .app-shell { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--border); }
+    .sidebar-nav { flex-direction: row; overflow-x: auto; padding: 8px 10px; gap: 4px; }
+    .sidebar-section { display: none; }
+    .side-item { width: auto; flex: none; border-left: none; border-bottom: 2px solid transparent; border-radius: 7px; }
+    .side-item.active { border-left: none; border-bottom-color: var(--emerald); border-radius: 7px 7px 0 0; margin-left: 0; width: auto; }
+    .sidebar-user { border-top: none; border-left: 1px solid var(--border); }
+    .app-content { padding: 18px 16px 40px; max-width: none; }
+}
+
+/* ─── Рамка браузера (мок на лендинге) ──────────────────────────────────── */
+.browser-frame {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-pop);
+}
+.browser-chrome {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+.browser-dots { display: flex; gap: 6px; flex: none; }
+.browser-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border-strong); }
+.browser-url {
+    flex: 1;
+    display: flex;
     align-items: center;
     gap: 7px;
-    padding: 8px 14px;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink-dim);
-    text-decoration: none;
-    border: 1px solid transparent;
-    transition: all 0.15s;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 11px;
+    font-size: 11.5px;
+    color: var(--text-faint);
 }
-.nav-link:hover { color: #d1fae5; background: rgba(110, 231, 183, 0.08); }
-.nav-link.nav-active { color: var(--mint); background: rgba(52, 211, 153, 0.10); border-color: rgba(110, 231, 183, 0.22); }
+
+/* ─── Ссылки-призраки (футеры, «на главную») ────────────────────────────── */
+.footer-link { color: var(--text-faint); font-size: 13px; text-decoration: none; transition: color 0.13s; }
+.footer-link:hover { color: var(--mint); }
+
+/* ─── Шаги с соединительной линией (лендинг) ────────────────────────────── */
+.steps-grid { position: relative; }
+.step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(110, 231, 183, 0.22);
+    color: var(--emerald);
+    font-weight: 700;
+    font-size: 12px;
+    flex: none;
+}
+
+/* ─── Ховер карточек (лендинг) — тихий, без подпрыгиваний ───────────────── */
+.card-hover { transition: border-color 0.15s, background 0.15s; }
+.card-hover:hover { border-color: var(--border-strong); background: var(--surface-2); }
 
 /* ─── Фокус и reduced motion ────────────────────────────────────────────── */
 :focus-visible { outline: 2px solid var(--emerald); outline-offset: 2px; border-radius: 6px; }
-
 @media (prefers-reduced-motion: reduce) {
-    .radar-badge::before { animation: none; }
-    .scanline { display: none; }
-    .card-hover:hover { transform: none; }
-    .btn, .btn-primary:hover { transition: none; transform: none; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

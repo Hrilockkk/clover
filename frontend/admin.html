@@ -4,138 +4,156 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
-    <title>Админ-панель — Clover · Fear Project</title>
+    <title>Пользователи — Clover · Fear Project</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
-<body class="clover-field">
-    <div class="scanline"></div>
-    <div class="relative min-h-screen p-6 max-w-[1280px] mx-auto">
-        <!-- Header -->
-        <header class="flex items-center justify-between mb-10">
-            <a href="/" class="flex items-center gap-3">
-                <span class="radar-badge"><i class="ph ph-clover text-xl text-emerald-300"></i></span>
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <a href="/" class="sidebar-head">
+                <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
                 <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
             </a>
-            <div class="flex items-center gap-2">
-                <span id="userBadge" class="text-sm text-emerald-100/50 mr-2"></span>
-                <a href="/scans" class="nav-link"><i class="ph ph-list-checks"></i><span class="hidden sm:inline">Сканы</span></a>
-                <a href="/admin" class="nav-link nav-active"><i class="ph ph-shield-star"></i><span class="hidden sm:inline">Админка</span></a>
-                <button onclick="logout()" class="nav-link" title="Выйти из панели">
-                    <i class="ph ph-sign-out"></i><span class="hidden sm:inline">Выйти</span>
-                </button>
+            <nav class="sidebar-nav">
+                <p class="sidebar-section">Проверки</p>
+                <a href="/scans" class="side-item"><i class="ph ph-link-simple"></i>Ссылки</a>
+                <a href="/scans" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</a>
+                <a href="/scans" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</a>
+                <p class="sidebar-section">Управление</p>
+                <a href="/admin" class="side-item active"><i class="ph ph-shield-star"></i>Пользователи</a>
+            </nav>
+            <div class="sidebar-user">
+                <span class="avatar" id="userAvatar">·</span>
+                <div class="u-meta">
+                    <div class="u-name" id="userName">—</div>
+                    <div class="u-sub" id="userLevel">—</div>
+                </div>
+                <button onclick="logout()" class="btn btn-ghost btn-icon" title="Выйти из панели"><i class="ph ph-sign-out"></i></button>
             </div>
-        </header>
+        </aside>
 
-        <!-- Title -->
-        <div class="mb-8">
-            <h1 class="font-display text-2xl sm:text-3xl font-semibold text-white mb-2 flex items-center gap-3">
-                <i class="ph ph-shield-star text-emerald-300"></i>
-                Админ-панель
-            </h1>
-            <p class="text-emerald-100/50 text-sm">Пользователи, уровни доступа и пароли — управление панелью Clover</p>
-        </div>
-
-        <!-- Stats -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
-                <span class="radar-badge"><i class="ph ph-users-three text-lg text-emerald-300"></i></span>
-                <div><p id="statUsers" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Пользователей</p></div>
-            </div>
-            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
-                <span class="radar-badge"><i class="ph ph-clipboard-text text-lg text-emerald-300"></i></span>
-                <div><p id="statScans" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Сканов в базе</p></div>
-            </div>
-            <div class="glass-panel rounded-2xl p-5 flex items-center gap-4 card-hover">
-                <span class="radar-badge"><i class="ph ph-link-simple text-lg text-emerald-300"></i></span>
-                <div><p id="statLinks" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-1">Активных ссылок</p></div>
-            </div>
-        </div>
-
-        <!-- Create user -->
-        <div class="glass-panel rounded-2xl p-6 mb-8">
-            <h2 class="font-display text-base font-semibold text-white mb-5 flex items-center gap-2">
-                <i class="ph ph-user-plus text-emerald-300"></i>
-                Создать пользователя
-            </h2>
-            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        <!-- Content -->
+        <main class="app-content">
+            <div class="page-head">
                 <div>
-                    <label for="newUsername" class="block text-xs text-emerald-100/40 mb-1.5">Логин *</label>
+                    <h1 class="page-title">Пользователи</h1>
+                    <p class="page-sub">Учётные записи, уровни доступа и пароли</p>
+                </div>
+                <div class="page-actions">
+                    <button onclick="openCreateModal()" class="btn btn-primary"><i class="ph ph-plus"></i>Создать пользователя</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-users-three text-lg"></i></span>
+                    <div><p id="statUsers" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Пользователей</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-clipboard-text text-lg"></i></span>
+                    <div><p id="statScans" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Сканов в базе</p></div>
+                </div>
+                <div class="panel p-4 flex items-center gap-3.5">
+                    <span class="logo-mark"><i class="ph ph-link-simple text-lg"></i></span>
+                    <div><p id="statLinks" class="stat-num">—</p><p class="text-emerald-100/40 text-xs mt-0.5">Активных ссылок</p></div>
+                </div>
+            </div>
+
+            <!-- Users -->
+            <div class="panel">
+                <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between">
+                    <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                        <i class="ph ph-users text-emerald-300"></i>
+                        Все пользователи
+                    </h2>
+                    <button onclick="loadUsers()" class="btn btn-ghost btn-sm" title="Обновить"><i class="ph ph-arrows-clockwise"></i></button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="sticky">
+                            <tr class="border-b border-emerald-300/10">
+                                <th class="text-left py-3 px-5">Пользователь</th>
+                                <th class="text-left py-3 px-3">Уровень</th>
+                                <th class="text-left py-3 px-3">Сканы</th>
+                                <th class="text-left py-3 px-3">Сессии</th>
+                                <th class="text-left py-3 px-3">Создан</th>
+                                <th class="text-right py-3 px-5">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="createModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeCreateModal()">
+        <div class="modal-card max-w-md w-full">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-300/10">
+                <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="ph ph-user-plus text-emerald-300"></i>Создать пользователя</h2>
+                <button onclick="closeCreateModal()" class="btn btn-ghost btn-icon" title="Закрыть"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label for="newUsername" class="f-label">Логин *</label>
                     <input type="text" id="newUsername" placeholder="vasya" class="w-full" autocomplete="off">
                 </div>
                 <div>
-                    <label for="newPassword" class="block text-xs text-emerald-100/40 mb-1.5">Пароль *</label>
+                    <label for="newPassword" class="f-label">Пароль *</label>
                     <div class="flex gap-2">
                         <input type="text" id="newPassword" placeholder="минимум 4 символа" class="flex-1 mono" autocomplete="off">
-                        <button onclick="fillGenerated('newPassword')" class="btn btn-ghost btn-icon" title="Сгенерировать пароль"><i class="ph ph-dice-five"></i></button>
+                        <button onclick="fillGenerated('newPassword')" class="btn btn-secondary btn-icon" style="width:38px;height:38px" title="Сгенерировать пароль"><i class="ph ph-dice-five"></i></button>
                     </div>
                 </div>
-                <div>
-                    <label for="newDisplayName" class="block text-xs text-emerald-100/40 mb-1.5">Имя (отображается)</label>
-                    <input type="text" id="newDisplayName" placeholder="Vasya" class="w-full" autocomplete="off">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="newDisplayName" class="f-label">Имя (отображается)</label>
+                        <input type="text" id="newDisplayName" placeholder="Vasya" class="w-full" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="newLevel" class="f-label">Уровень доступа</label>
+                        <select id="newLevel" class="w-full">
+                            <option value="1">1 — Мл. модер</option>
+                            <option value="2">2 — Модер</option>
+                            <option value="3">3 — СТМ/СТА</option>
+                            <option value="4" selected>4 — ГА</option>
+                            <option value="5">5 — Супер</option>
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label for="newLevel" class="block text-xs text-emerald-100/40 mb-1.5">Уровень доступа</label>
-                    <select id="newLevel" class="w-full">
-                        <option value="1">1 — Мл. модер</option>
-                        <option value="2">2 — Модер</option>
-                        <option value="3">3 — СТМ/СТА</option>
-                        <option value="4" selected>4 — ГА</option>
-                        <option value="5">5 — Супер</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-4">
-                <label class="flex items-center gap-3 cursor-pointer select-none">
+                <label class="flex items-center gap-3 cursor-pointer select-none pt-1">
                     <span class="switch"><input type="checkbox" id="newCanScan"><span class="track"></span></span>
                     <span class="text-sm text-emerald-50/75">Разрешить сканы <span class="text-emerald-100/35">(точечный доступ к /scans)</span></span>
                 </label>
-                <button onclick="createUser()" class="btn btn-primary ml-auto">
-                    <i class="ph ph-plus-circle"></i>
-                    Создать
-                </button>
             </div>
-        </div>
-
-        <!-- Users -->
-        <div class="glass-panel rounded-2xl p-6">
-            <h2 class="font-display text-base font-semibold text-white mb-4 flex items-center gap-2">
-                <i class="ph ph-users text-emerald-300"></i>
-                Пользователи
-            </h2>
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead>
-                        <tr class="border-b border-emerald-300/15">
-                            <th class="text-left py-3 px-3">Пользователь</th>
-                            <th class="text-left py-3 px-3">Уровень</th>
-                            <th class="text-left py-3 px-3">Сканы</th>
-                            <th class="text-left py-3 px-3">Сессии</th>
-                            <th class="text-left py-3 px-3">Создан</th>
-                            <th class="text-left py-3 px-3">Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody id="usersBody"></tbody>
-                </table>
+            <div class="flex gap-3 justify-end px-6 py-4 border-t border-emerald-300/10">
+                <button onclick="closeCreateModal()" class="btn btn-ghost">Отмена</button>
+                <button onclick="createUser()" id="createUserBtn" class="btn btn-primary"><i class="ph ph-check"></i>Создать</button>
             </div>
         </div>
     </div>
 
     <!-- Password Modal -->
     <div id="passwordModal" class="hidden modal-backdrop" onclick="if(event.target===this)closePasswordModal()">
-        <div class="glass-panel rounded-2xl p-6 max-w-md w-full mx-4">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="font-display text-lg font-semibold text-white flex items-center gap-2"><i class="ph ph-key text-amber-400"></i>Сброс пароля</h2>
-                <button onclick="closePasswordModal()" class="text-emerald-100/50 hover:text-white"><i class="ph ph-x text-xl"></i></button>
+        <div class="modal-card max-w-md w-full">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-300/10">
+                <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="ph ph-key text-amber-400"></i>Сброс пароля</h2>
+                <button onclick="closePasswordModal()" class="btn btn-ghost btn-icon" title="Закрыть"><i class="ph ph-x"></i></button>
             </div>
-            <p class="text-emerald-100/50 text-sm mb-4">Новый пароль для <span id="pwTargetName" class="text-white font-semibold"></span>. Все активные сессии пользователя будут завершены.</p>
-            <div class="flex gap-2 mb-5">
-                <input type="text" id="pwInput" class="flex-1 mono" placeholder="Новый пароль" autocomplete="off">
-                <button onclick="fillGenerated('pwInput')" class="btn btn-ghost btn-icon" title="Сгенерировать"><i class="ph ph-dice-five"></i></button>
+            <div class="p-6">
+                <p class="text-emerald-100/50 text-sm mb-4">Новый пароль для <span id="pwTargetName" class="text-white font-semibold"></span>. Все активные сессии пользователя будут завершены.</p>
+                <div class="flex gap-2">
+                    <input type="text" id="pwInput" class="flex-1 mono" placeholder="Новый пароль" autocomplete="off">
+                    <button onclick="fillGenerated('pwInput')" class="btn btn-secondary btn-icon" style="width:38px;height:38px" title="Сгенерировать"><i class="ph ph-dice-five"></i></button>
+                </div>
             </div>
-            <div class="flex gap-3 justify-end">
+            <div class="flex gap-3 justify-end px-6 py-4 border-t border-emerald-300/10">
                 <button onclick="closePasswordModal()" class="btn btn-ghost">Отмена</button>
                 <button onclick="savePassword()" class="btn btn-primary"><i class="ph ph-check"></i>Сохранить</button>
             </div>
@@ -144,15 +162,17 @@
 
     <!-- Delete Modal -->
     <div id="deleteModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeDeleteModal()">
-        <div class="glass-panel rounded-2xl p-6 max-w-md w-full mx-4">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="font-display text-lg font-semibold text-white flex items-center gap-2"><i class="ph ph-trash text-rose-400"></i>Удалить пользователя</h2>
-                <button onclick="closeDeleteModal()" class="text-emerald-100/50 hover:text-white"><i class="ph ph-x text-xl"></i></button>
+        <div class="modal-card max-w-md w-full">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-emerald-300/10">
+                <h2 class="text-base font-bold text-white flex items-center gap-2"><i class="ph ph-trash text-rose-400"></i>Удалить пользователя</h2>
+                <button onclick="closeDeleteModal()" class="btn btn-ghost btn-icon" title="Закрыть"><i class="ph ph-x"></i></button>
             </div>
-            <p class="text-emerald-100/50 text-sm mb-6">Пользователь <span id="delTargetName" class="text-white font-semibold"></span> будет удалён вместе со всеми сессиями. Действие необратимо.</p>
-            <div class="flex gap-3 justify-end">
+            <div class="p-6">
+                <p class="text-emerald-100/50 text-sm">Пользователь <span id="delTargetName" class="text-white font-semibold"></span> будет удалён вместе со всеми сессиями. Действие необратимо.</p>
+            </div>
+            <div class="flex gap-3 justify-end px-6 py-4 border-t border-emerald-300/10">
                 <button onclick="closeDeleteModal()" class="btn btn-ghost">Отмена</button>
-                <button onclick="confirmDelete()" class="btn btn-red"><i class="ph ph-trash"></i>Удалить</button>
+                <button onclick="confirmDelete()" class="btn btn-danger" style="background:rgba(248,113,113,0.14)"><i class="ph ph-trash"></i>Удалить</button>
             </div>
         </div>
     </div>
@@ -171,7 +191,8 @@
         function toast(msg, type) {
             const el = document.createElement('div');
             el.className = 'toast-item toast-' + (type || 'success');
-            el.textContent = msg;
+            const icon = type === 'error' ? 'ph-warning-circle' : 'ph-check-circle';
+            el.innerHTML = '<i class="ph ' + icon + '"></i>' + esc(msg);
             document.getElementById('toast').appendChild(el);
             setTimeout(() => el.remove(), 4000);
         }
@@ -217,7 +238,9 @@
                 if (!res.ok) { window.location.href = '/auth?next=/admin'; return; }
                 currentUser = await res.json();
                 if ((currentUser.level || 0) < 5) { window.location.href = '/scans'; return; }
-                document.getElementById('userBadge').textContent = (currentUser.displayName || currentUser.username || '') + ' · ур.' + (currentUser.level || 0);
+                document.getElementById('userName').textContent = currentUser.displayName || currentUser.username || '';
+                document.getElementById('userLevel').textContent = 'Уровень ' + (currentUser.level || 0);
+                document.getElementById('userAvatar').textContent = (currentUser.displayName || currentUser.username || '?').trim().charAt(0);
                 await Promise.all([loadStats(), loadUsers()]);
             } catch (e) {
                 window.location.href = '/auth?next=/admin';
@@ -235,6 +258,20 @@
         }
 
         // ─── Create ────────────────────────────────────────────
+        function openCreateModal() {
+            document.getElementById('newUsername').value = '';
+            document.getElementById('newPassword').value = generatePassword();
+            document.getElementById('newDisplayName').value = '';
+            document.getElementById('newCanScan').checked = false;
+            document.getElementById('newLevel').value = '4';
+            document.getElementById('createModal').classList.remove('hidden');
+            document.getElementById('newUsername').focus();
+        }
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.add('hidden');
+        }
+
         async function createUser() {
             const username = document.getElementById('newUsername').value.trim();
             const password = document.getElementById('newPassword').value;
@@ -243,17 +280,17 @@
             const canScan = document.getElementById('newCanScan').checked;
             if (!username) { toast('Введите логин', 'error'); return; }
             if (password.length < 4) { toast('Пароль минимум 4 символа', 'error'); return; }
+            const btn = document.getElementById('createUserBtn');
+            btn.classList.add('is-loading');
             const res = await fetch('/api/users', {
                 method: 'POST', headers: authHeaders(),
                 body: JSON.stringify({ username, password, displayName, level, canScan })
             });
+            btn.classList.remove('is-loading');
             const data = await res.json().catch(() => ({}));
             if (!res.ok) { toast(data.message || ('Ошибка: ' + res.status), 'error'); return; }
             toast('Пользователь ' + username + ' создан');
-            document.getElementById('newUsername').value = '';
-            document.getElementById('newPassword').value = '';
-            document.getElementById('newDisplayName').value = '';
-            document.getElementById('newCanScan').checked = false;
+            closeCreateModal();
             await Promise.all([loadStats(), loadUsers()]);
         }
 
@@ -274,7 +311,7 @@
 
         function renderUsers() {
             const body = document.getElementById('usersBody');
-            if (!users.length) { body.innerHTML = '<tr><td colspan="6" class="text-center text-emerald-100/40 py-10">Пока никого нет — создайте первого пользователя выше</td></tr>'; return; }
+            if (!users.length) { body.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="ph ph-users"></i>Пока никого нет — создайте первого пользователя</div></td></tr>'; return; }
             body.innerHTML = users.map(u => {
                 const isSelf = u.id === currentUser.id;
                 const initial = (u.displayName || u.username || '?').trim().charAt(0) || '?';
@@ -282,17 +319,17 @@
                     `<option value="${v}" ${Number(v) === u.level ? 'selected' : ''}>${v} — ${name}</option>`).join('');
                 return `
                 <tr class="border-b border-emerald-300/10">
-                    <td class="py-3 px-3">
+                    <td class="py-3 px-5">
                         <div class="flex items-center gap-3">
                             <span class="avatar">${esc(initial)}</span>
                             <div>
                                 <div class="flex items-center gap-2">
                                     <input type="text" value="${esc(u.displayName)}" maxlength="64"
                                         onchange="updateUser('${u.id}', { displayName: this.value })"
-                                        class="!bg-transparent !border-transparent hover:!border-emerald-300/25 focus:!border-emerald-300/50 !py-0.5 !px-2 w-36 font-semibold text-white">
+                                        class="!bg-transparent !border-transparent hover:!border-emerald-300/25 focus:!border-emerald-300/50 !h-7 !py-0 !px-1.5 w-32 font-semibold text-white text-sm">
                                     ${isSelf ? '<span class="tag tag-lime">вы</span>' : ''}
                                 </div>
-                                <span class="mono text-xs text-emerald-100/40 pl-2">@${esc(u.username)}</span>
+                                <span class="mono text-xs text-emerald-100/40">@${esc(u.username)}</span>
                             </div>
                         </div>
                     </td>
@@ -300,7 +337,7 @@
                         <div class="flex items-center gap-2">
                             <span class="tag ${levelTag(u.level)}">${esc(LEVEL_NAMES[u.level] || u.level)}</span>
                             <select onchange="updateUser('${u.id}', { level: parseInt(this.value) })" ${isSelf ? 'disabled title="Нельзя менять свой уровень"' : ''}
-                                class="!py-1 !px-2 text-xs">${levelOptions}</select>
+                                class="!h-7 !py-0 !px-2 text-xs" style="min-width:118px">${levelOptions}</select>
                         </div>
                     </td>
                     <td class="py-3 px-3">
@@ -313,11 +350,11 @@
                         ${u.activeSessions > 0 ? `<span class="tag tag-green">${u.activeSessions}</span>` : '<span class="text-emerald-100/30 text-xs">нет</span>'}
                     </td>
                     <td class="py-3 px-3 text-emerald-100/40 text-xs">${fmtDate(u.createdAt)}</td>
-                    <td class="py-3 px-3">
-                        <div class="flex gap-2">
-                            <button onclick="openPasswordModal('${u.id}')" class="btn btn-ghost btn-icon" title="Сбросить пароль"><i class="ph ph-key"></i></button>
-                            <button onclick="kickUser('${u.id}')" class="btn btn-ghost btn-icon" title="Завершить все сессии" ${isSelf ? 'disabled' : ''}><i class="ph ph-sign-out"></i></button>
-                            <button onclick="openDeleteModal('${u.id}')" class="btn btn-red btn-icon" title="Удалить" ${isSelf ? 'disabled' : ''}><i class="ph ph-trash"></i></button>
+                    <td class="py-3 px-5">
+                        <div class="flex gap-2 justify-end">
+                            <button onclick="openPasswordModal('${u.id}')" class="btn btn-secondary btn-icon btn-sm" title="Сбросить пароль"><i class="ph ph-key"></i></button>
+                            <button onclick="kickUser('${u.id}')" class="btn btn-secondary btn-icon btn-sm" title="Завершить все сессии" ${isSelf ? 'disabled' : ''}><i class="ph ph-sign-out"></i></button>
+                            <button onclick="openDeleteModal('${u.id}')" class="btn btn-danger btn-icon btn-sm" title="Удалить" ${isSelf ? 'disabled' : ''}><i class="ph ph-trash"></i></button>
                         </div>
                     </td>
                 </tr>`;
@@ -394,6 +431,11 @@
             closeDeleteModal();
             await Promise.all([loadStats(), loadUsers()]);
         }
+
+        // ESC закрывает модалки
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { closeCreateModal(); closePasswordModal(); closeDeleteModal(); }
+        });
     </script>
 </body>
 </html>

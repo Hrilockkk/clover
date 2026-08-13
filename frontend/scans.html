@@ -7,186 +7,195 @@
     <title>Сканы — Clover · Fear Project</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
-<body class="clover-field">
-    <div class="scanline"></div>
-    <div class="relative min-h-screen p-6 max-w-[1280px] mx-auto">
-        <!-- Header -->
-        <header class="flex items-center justify-between mb-10">
-            <a href="/" class="flex items-center gap-3">
-                <span class="radar-badge">
-                    <i class="ph ph-clover text-xl text-emerald-300"></i>
-                </span>
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <a href="/" class="sidebar-head">
+                <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
                 <span class="brand-text">Clover <span class="brand-sub">/ Fear Project</span></span>
             </a>
-            <div class="flex items-center gap-2">
-                <span id="userBadge" class="text-sm text-emerald-100/50 mr-2"></span>
-                <a href="/scans" class="nav-link nav-active"><i class="ph ph-list-checks"></i><span class="hidden sm:inline">Сканы</span></a>
-                <a href="/admin" id="adminLink" style="display:none" class="nav-link"><i class="ph ph-shield-star"></i><span class="hidden sm:inline">Админка</span></a>
-                <button onclick="logout()" class="nav-link" title="Выйти из панели">
-                    <i class="ph ph-sign-out"></i><span class="hidden sm:inline">Выйти</span>
-                </button>
-            </div>
-        </header>
-
-        <!-- Title -->
-        <div class="mb-8">
-            <h1 class="font-display text-2xl sm:text-3xl font-semibold text-white mb-2 flex items-center gap-3">
-                <i class="ph ph-clover text-emerald-300"></i>
-                Сканы Clover
-            </h1>
-            <p class="text-emerald-100/50 text-sm">Генерация ссылок для проверки игроков и просмотр результатов сканов</p>
-        </div>
-
-        <!-- Access level banner (level 5 only) -->
-        <div id="levelBanner" class="hidden glass-panel rounded-2xl p-4 mb-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="text-white font-semibold text-sm flex items-center gap-2">
-                        <i class="ph ph-shield-check text-amber-400"></i>
-                        Уровень доступа к сканам
-                    </h3>
-                    <p class="text-emerald-100/40 text-xs mt-1">Минимальный уровень пользователя для доступа к этой странице</p>
+            <nav class="sidebar-nav">
+                <p class="sidebar-section">Проверки</p>
+                <button id="tabLinks" onclick="switchTab('links')" class="side-item active"><i class="ph ph-link-simple"></i>Ссылки</button>
+                <button id="tabScans" onclick="switchTab('scans')" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</button>
+                <button id="tabSearch" onclick="switchTab('search')" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</button>
+                <p class="sidebar-section" id="adminSection" style="display:none">Управление</p>
+                <a href="/admin" id="adminLink" style="display:none" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
+            </nav>
+            <div class="sidebar-user">
+                <span class="avatar" id="userAvatar">·</span>
+                <div class="u-meta">
+                    <div class="u-name" id="userName">—</div>
+                    <div class="u-sub" id="userLevel">—</div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <select id="scansLevelSelect" class="text-center min-w-[80px]">
-                        <option value="1">1 — Мл. модер</option>
-                        <option value="2">2 — Модер</option>
-                        <option value="3">3 — СТМ/СТА</option>
-                        <option value="4">4 — ГА</option>
-                        <option value="5">5 — Супер</option>
-                    </select>
-                    <button onclick="saveScansLevel()" class="btn btn-amber">Сохранить</button>
-                </div>
+                <button onclick="logout()" class="btn btn-ghost btn-icon" title="Выйти из панели"><i class="ph ph-sign-out"></i></button>
             </div>
-        </div>
+        </aside>
 
-        <!-- Tabs -->
-        <div class="flex gap-2 mb-6">
-            <button id="tabLinks" onclick="switchTab('links')" class="btn btn-primary">Ссылки</button>
-            <button id="tabScans" onclick="switchTab('scans')" class="btn btn-ghost">Сканы</button>
-            <button id="tabSearch" onclick="switchTab('search')" class="btn btn-ghost">Поиск</button>
-        </div>
-
-        <!-- Links Tab -->
-        <div id="linksTab" class="space-y-6">
-            <!-- Create link -->
-            <div class="glass-panel rounded-2xl p-6">
-                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="ph ph-plus-circle text-emerald-300"></i>
-                    Создать команду для проверки
-                </h2>
-                <div class="grid sm:grid-cols-1 gap-4 mb-4">
+        <!-- Content -->
+        <main class="app-content">
+            <!-- Links -->
+            <div id="linksTab">
+                <div class="page-head">
                     <div>
-                        <label class="block text-xs text-emerald-100/40 mb-1">Заметка (ник игрока, команда)</label>
-                        <input type="text" id="linkNote" placeholder="Напр: player123 / Team Alpha" class="w-full">
+                        <h1 class="page-title">Ссылки на проверку</h1>
+                        <p class="page-sub">Одноразовая ссылка живёт 10 минут и удаляется после загрузки результата</p>
                     </div>
                 </div>
-                <p class="text-emerald-100/40 text-xs mb-3">Пароль генерируется автоматически. Команда и пароль удалятся через 10 минут или сразу после загрузки скана игроком. Clover удалит сам себя после сканирования.</p>
-                <button onclick="createLink()" class="btn btn-primary">
-                    <i class="ph ph-terminal"></i>
-                    Сгенерировать команду
-                </button>
-                <div id="linkResult" class="mt-4"></div>
+
+                <!-- Access level (level 5 only) -->
+                <div id="levelBanner" class="hidden panel p-4 mb-5">
+                    <div class="flex items-center justify-between gap-4 flex-wrap">
+                        <div>
+                            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+                                <i class="ph ph-shield-check text-amber-400"></i>
+                                Уровень доступа к сканам
+                            </h3>
+                            <p class="text-emerald-100/40 text-xs mt-1">Минимальный уровень пользователя для доступа к этой странице</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <select id="scansLevelSelect" class="min-w-[130px]">
+                                <option value="1">1 — Мл. модер</option>
+                                <option value="2">2 — Модер</option>
+                                <option value="3">3 — СТМ/СТА</option>
+                                <option value="4">4 — ГА</option>
+                                <option value="5">5 — Супер</option>
+                            </select>
+                            <button onclick="saveScansLevel()" class="btn btn-secondary btn-sm">Сохранить</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create link -->
+                <div class="panel p-5 mb-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-4 flex items-center gap-2">
+                        <i class="ph ph-terminal text-emerald-300"></i>
+                        Создать команду для проверки
+                    </h2>
+                    <div class="flex gap-3 mb-3 flex-wrap">
+                        <input type="text" id="linkNote" placeholder="Заметка: ник игрока, команда" class="flex-1 min-w-[220px]" onkeydown="if(event.key==='Enter')createLink()">
+                        <button onclick="createLink()" id="createLinkBtn" class="btn btn-primary">
+                            <i class="ph ph-plus"></i>
+                            Сгенерировать команду
+                        </button>
+                    </div>
+                    <p class="text-emerald-100/40 text-xs">Пароль генерируется автоматически. Clover удалит сам себя после сканирования.</p>
+                    <div id="linkResult" class="empty:hidden mt-4"></div>
+                </div>
+
+                <!-- Links list -->
+                <div class="panel">
+                    <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between">
+                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-list text-emerald-300"></i>
+                            Активные ссылки
+                        </h2>
+                        <button onclick="loadLinks()" class="btn btn-ghost btn-sm" title="Обновить"><i class="ph ph-arrows-clockwise"></i></button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="sticky">
+                                <tr class="border-b border-emerald-300/10">
+                                    <th class="text-left py-3 px-5">Заметка</th>
+                                    <th class="text-left py-3 px-3">Админ</th>
+                                    <th class="text-left py-3 px-3">Пароль</th>
+                                    <th class="text-left py-3 px-3">Истекает</th>
+                                    <th class="text-left py-3 px-3">Команда</th>
+                                    <th class="text-left py-3 px-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="linksBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
-            <!-- Links list -->
-            <div class="glass-panel rounded-2xl p-6">
-                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="ph ph-list text-emerald-300"></i>
-                    Активные ссылки
-                </h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="border-b border-emerald-300/15">
-                                <th class="text-left py-3 px-3">Заметка</th>
-                                <th class="text-left py-3 px-3">Админ</th>
-                                <th class="text-left py-3 px-3">Пароль</th>
-                                <th class="text-left py-3 px-3">Истекает</th>
-                                <th class="text-left py-3 px-3">CMD</th>
-                                <th class="text-left py-3 px-3"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="linksBody"></tbody>
-                    </table>
+            <!-- Scans -->
+            <div id="scansTab" class="hidden">
+                <div class="page-head">
+                    <div>
+                        <h1 class="page-title">Все сканы</h1>
+                        <p class="page-sub">Результаты проверок, от новых к старым</p>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Scans Tab -->
-        <div id="scansTab" class="hidden space-y-6">
-            <div class="glass-panel rounded-2xl p-6">
-                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="ph ph-upload-simple text-emerald-300"></i>
-                    Загрузить скан вручную
-                </h2>
-                <p class="text-emerald-100/40 text-sm mb-3">Если игрок не смог отправить скан автоматически, выберите ссылку и загрузите файл <span class="mono text-emerald-300">scan_*.enc</span>.</p>
-                <div class="mb-3">
-                    <label class="block text-xs text-emerald-100/40 mb-1">Ссылка</label>
-                    <select id="manualUploadLink" class="w-full"></select>
+                <div class="panel p-5 mb-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-3 flex items-center gap-2">
+                        <i class="ph ph-upload-simple text-emerald-300"></i>
+                        Загрузить скан вручную
+                    </h2>
+                    <p class="text-emerald-100/40 text-sm mb-3">Если игрок не смог отправить скан автоматически, выберите ссылку и загрузите файл <span class="mono text-emerald-300">scan_*.enc</span>.</p>
+                    <div class="flex gap-3 mb-1 flex-wrap items-center">
+                        <select id="manualUploadLink" class="flex-1 min-w-[200px]"></select>
+                        <input type="file" id="manualUploadInput" accept=".enc" class="hidden">
+                        <button onclick="document.getElementById('manualUploadInput').click()" class="btn btn-secondary">
+                            <i class="ph ph-upload-simple"></i> Выбрать .enc файл
+                        </button>
+                        <span id="manualUploadName" class="text-emerald-100/50 text-sm"></span>
+                    </div>
+                    <p id="manualUploadStatus" class="text-xs mt-2"></p>
                 </div>
-                <div class="flex gap-3 mb-3">
-                    <input type="file" id="manualUploadInput" accept=".enc" class="hidden">
-                    <button onclick="document.getElementById('manualUploadInput').click()" class="btn btn-primary">
-                        <i class="ph ph-upload-simple"></i> Выбрать .enc файл
-                    </button>
-                    <span id="manualUploadName" class="text-emerald-100/50 text-sm self-center"></span>
-                </div>
-                <p id="manualUploadStatus" class="text-xs text-center"></p>
-            </div>
-            <div class="glass-panel rounded-2xl p-6">
-                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="ph ph-clipboard-text text-emerald-300"></i>
-                    Все сканы
-                </h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="border-b border-emerald-300/15">
-                                <th class="text-left py-3 px-3">Время</th>
-                                <th class="text-left py-3 px-3">Админ</th>
-                                <th class="text-left py-3 px-3">Хост</th>
-                                <th class="text-left py-3 px-3">SteamID</th>
-                                <th class="text-left py-3 px-3">HWID</th>
-                                <th class="text-left py-3 px-3">Находки</th>
-                                <th class="text-left py-3 px-3"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="scansBody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
 
-        <!-- Search Tab -->
-        <div id="searchTab" class="hidden space-y-6">
-            <div class="glass-panel rounded-2xl p-6">
-                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="ph ph-magnifying-glass text-emerald-300"></i>
-                    Поиск по SteamID / HWID / нику
-                </h2>
-                <div class="flex gap-3 mb-4">
-                    <input type="text" id="searchInput" placeholder="76561198..., HWID, ник, админ..." class="flex-1" onkeydown="if(event.key==='Enter')doSearch()">
-                    <button onclick="doSearch()" class="btn btn-primary">Искать</button>
+                <div class="panel">
+                    <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between">
+                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-clipboard-text text-emerald-300"></i>
+                            Результаты
+                        </h2>
+                        <button onclick="loadScans()" class="btn btn-ghost btn-sm" title="Обновить"><i class="ph ph-arrows-clockwise"></i></button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="sticky">
+                                <tr class="border-b border-emerald-300/10">
+                                    <th class="text-left py-3 px-5">Время</th>
+                                    <th class="text-left py-3 px-3">Админ</th>
+                                    <th class="text-left py-3 px-3">Хост</th>
+                                    <th class="text-left py-3 px-3">SteamID</th>
+                                    <th class="text-left py-3 px-3">HWID</th>
+                                    <th class="text-left py-3 px-3">Находки</th>
+                                    <th class="text-left py-3 px-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="scansBody"></tbody>
+                        </table>
+                    </div>
                 </div>
-                <div id="searchResults"></div>
             </div>
-        </div>
+
+            <!-- Search -->
+            <div id="searchTab" class="hidden">
+                <div class="page-head">
+                    <div>
+                        <h1 class="page-title">Поиск</h1>
+                        <p class="page-sub">По SteamID, HWID, нику, хосту или админу</p>
+                    </div>
+                </div>
+                <div class="panel p-5">
+                    <div class="flex gap-3 mb-2">
+                        <input type="text" id="searchInput" placeholder="76561198..., HWID, ник, админ..." class="flex-1" onkeydown="if(event.key==='Enter')doSearch()">
+                        <button onclick="doSearch()" class="btn btn-primary"><i class="ph ph-magnifying-glass"></i>Искать</button>
+                    </div>
+                    <div id="searchResults"></div>
+                </div>
+            </div>
+        </main>
     </div>
 
     <!-- Detail Modal -->
     <div id="detailModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeDetail()">
-        <div class="glass-panel rounded-2xl p-6 max-w-4xl w-full max-h-[85vh] flex flex-col">
+        <div class="modal-card p-6 max-w-4xl w-full max-h-[85vh] flex flex-col">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-white">Детали скана</h2>
-                <button onclick="closeDetail()" class="text-emerald-100/50 hover:text-white">
-                    <i class="ph ph-x text-xl"></i>
+                <h2 class="text-lg font-bold text-white">Детали скана</h2>
+                <button onclick="closeDetail()" class="btn btn-ghost btn-icon" title="Закрыть">
+                    <i class="ph ph-x"></i>
                 </button>
             </div>
-            <div id="detailTabs" class="flex flex-wrap gap-2 mb-4 pb-2 border-b border-emerald-300/15"></div>
+            <div id="detailTabs" class="flex flex-wrap gap-2 mb-4 pb-3 border-b border-emerald-300/10"></div>
             <div id="detailContent" class="overflow-y-auto pr-2"></div>
         </div>
     </div>
@@ -257,7 +266,7 @@
             ['links','scans','search'].forEach(t => {
                 document.getElementById(t + 'Tab').classList.toggle('hidden', t !== tab);
                 const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-                btn.className = t === tab ? 'btn btn-primary' : 'btn btn-ghost';
+                btn.classList.toggle('active', t === tab);
             });
             if (tab === 'scans') loadScans();
         }
@@ -270,7 +279,9 @@
                 const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + u.sessionToken } });
                 if (!res.ok) { window.location.href = '/auth?next=/scans'; return; }
                 currentUser = await res.json();
-                document.getElementById('userBadge').textContent = (currentUser.displayName || currentUser.username || '') + ' · ур.' + (currentUser.level || 0);
+                document.getElementById('userName').textContent = currentUser.displayName || currentUser.username || '';
+                document.getElementById('userLevel').textContent = 'Уровень ' + (currentUser.level || 0);
+                document.getElementById('userAvatar').textContent = (currentUser.displayName || currentUser.username || '?').trim().charAt(0);
 
                 // Load min level + check access
                 const lvlRes = await fetch('/api/scans/links', { headers: authHeaders() });
@@ -278,11 +289,12 @@
                 if (!lvlRes.ok) { window.location.href = '/auth?next=/scans'; return; }
                 const lvlData = await lvlRes.json();
 
-                // Show level banner + admin link for level 5
+                // Show level banner + admin section for level 5
                 if ((currentUser.level || 0) >= 5) {
                     document.getElementById('levelBanner').classList.remove('hidden');
                     document.getElementById('scansLevelSelect').value = String(lvlData.minLevel || 4);
                     document.getElementById('adminLink').style.display = '';
+                    document.getElementById('adminSection').style.display = '';
                 }
 
                 loadLinks();
@@ -312,8 +324,8 @@
             const expiresMin = Math.floor(expiresMs / 60000);
             const expiresSec = Math.floor((expiresMs % 60000) / 1000);
             document.getElementById('linkResult').innerHTML = `
-                <div class="glass-panel rounded-xl p-4 space-y-3">
-                    <div class="flex items-center gap-2 bg-amber-500/10 rounded-lg px-3 py-2">
+                <div class="panel-2 p-4 space-y-3">
+                    <div class="flex items-center gap-2 rounded-lg px-3 py-2" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.22)">
                         <span class="text-amber-400 text-xs font-semibold">Пароль игрока:</span>
                         <span class="mono text-amber-400 text-lg font-bold tracking-wider">${esc(link.playerPassword)}</span>
                     </div>
@@ -376,7 +388,7 @@
                 }
             }
             const body = document.getElementById('linksBody');
-            if (!data.links || data.links.length === 0) { body.innerHTML = '<tr><td colspan="6" class="text-center text-emerald-100/40 py-8">Нет активных ссылок</td></tr>'; return; }
+            if (!data.links || data.links.length === 0) { body.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="ph ph-link-simple"></i>Нет активных ссылок — создайте первую выше</div></td></tr>'; return; }
             const origin = location.origin;
             body.innerHTML = data.links.map(l => {
                 const remaining = (l.expiresAt || 0) - Date.now();
@@ -391,14 +403,18 @@
                 const ps = 'powershell -c "$r=iwr -uri \'' + dlUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
                 return `
                 <tr class="border-b border-emerald-300/10">
-                    <td class="py-3 px-3">${esc(l.note)}</td>
+                    <td class="py-3 px-5">${esc(l.note)}</td>
                     <td class="py-3 px-3 mono text-xs text-emerald-100/50">${esc(l.adminDisplayName || l.adminUser || '-')}</td>
-                    <td class="py-3 px-3 mono text-amber-400 text-xs font-bold tracking-wider">${esc(l.playerPassword || '—')}</td>
+                    <td class="py-3 px-3"><span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword || '')}')">${esc(l.playerPassword || '—')}</span></td>
                     <td class="py-3 px-3">${expiryBadge}</td>
-                    <td class="py-3 px-3 space-y-1"><button onclick="copyLinkCmd('${esc(ps)}')" class="btn btn-primary text-xs px-3 py-1.5"><i class="ph ph-terminal"></i> PowerShell</button><button onclick="copyLinkCmd('${esc(cmd)}')" class="btn btn-ghost text-xs px-3 py-1.5"><i class="ph ph-terminal"></i> CMD</button></td>
-                    <td class="py-3 px-3"><button onclick="deleteLink('${l.id}')" class="btn btn-red text-xs px-2 py-1"><i class="ph ph-trash"></i></button></td>
+                    <td class="py-3 px-3"><div class="flex gap-2"><button onclick="copyLinkCmd('${esc(ps)}')" class="btn btn-primary btn-sm"><i class="ph ph-terminal"></i> PowerShell</button><button onclick="copyLinkCmd('${esc(cmd)}')" class="btn btn-secondary btn-sm"><i class="ph ph-terminal"></i> CMD</button></div></td>
+                    <td class="py-3 px-3"><button onclick="deleteLink('${l.id}')" class="btn btn-danger btn-icon btn-sm" title="Удалить ссылку"><i class="ph ph-trash"></i></button></td>
                 </tr>`;
             }).join('');
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => toast('Скопировано в буфер')).catch(() => {});
         }
 
         function copyLinkCmd(cmd) {
@@ -457,7 +473,7 @@
             if (!res.ok) return;
             const data = await res.json();
             const body = document.getElementById('scansBody');
-            if (!data.scans || data.scans.length === 0) { body.innerHTML = '<tr><td colspan="7" class="text-center text-emerald-100/40 py-8">Нет сканов</td></tr>'; return; }
+            if (!data.scans || data.scans.length === 0) { body.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="ph ph-clipboard-text"></i>Пока нет ни одного скана — они появятся после проверок игроков</div></td></tr>'; return; }
             body.innerHTML = data.scans.map(s => {
                 const hits = hitCount(s);
                 const hostname = s.hardware?.hostname || '-';
@@ -466,7 +482,7 @@
                 const badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
                 return `
                 <tr class="border-b border-emerald-300/10 cursor-pointer" onclick="viewScan('${s.scanId}')">
-                    <td class="py-3 px-3 text-emerald-100/40 text-xs">${fmtDate(s.timestamp)}</td>
+                    <td class="py-3 px-5 text-emerald-100/40 text-xs">${fmtDate(s.timestamp)}</td>
                     <td class="py-3 px-3 mono text-xs text-emerald-100/50">${esc(s.adminDisplayName || s.adminUser || '-')}</td>
                     <td class="py-3 px-3 text-sm">${esc(hostname)}</td>
                     <td class="py-3 px-3 mono text-xs">${esc(steamIds)}</td>
@@ -485,8 +501,8 @@
             if (!res.ok) return;
             const data = await res.json();
             const el = document.getElementById('searchResults');
-            if (!data.scans || data.scans.length === 0) { el.innerHTML = '<p class="text-emerald-100/40 text-center py-8">Ничего не найдено</p>'; return; }
-            el.innerHTML = '<table class="w-full"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2 px-3">Время</th><th class="text-left py-2 px-3">Админ</th><th class="text-left py-2 px-3">Хост</th><th class="text-left py-2 px-3">SteamID</th><th class="text-left py-2 px-3">Находки</th><th></th></tr></thead><tbody>' +
+            if (!data.scans || data.scans.length === 0) { el.innerHTML = '<div class="empty-state"><i class="ph ph-magnifying-glass"></i>Ничего не найдено — попробуйте другой запрос</div>'; return; }
+            el.innerHTML = '<table class="w-full"><thead><tr class="border-b border-emerald-300/10"><th class="text-left py-2 px-3">Время</th><th class="text-left py-2 px-3">Админ</th><th class="text-left py-2 px-3">Хост</th><th class="text-left py-2 px-3">SteamID</th><th class="text-left py-2 px-3">Находки</th><th></th></tr></thead><tbody>' +
                 data.scans.map(s => {
                     const hits = hitCount(s);
                     const badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
@@ -539,7 +555,7 @@
             el.innerHTML = detailTabs.map(t => {
                 const has = tabHasData(t.id, currentDetailRec);
                 const active = currentDetailTab === t.id;
-                const cls = active ? 'btn btn-primary text-xs' : (has ? 'btn btn-ghost text-xs' : 'btn btn-ghost text-xs opacity-40 cursor-not-allowed');
+                const cls = active ? 'btn btn-primary btn-sm' : (has ? 'btn btn-secondary btn-sm' : 'btn btn-secondary btn-sm opacity-40 cursor-not-allowed');
                 return `<button class="${cls}" ${has ? `onclick="switchDetailTab('${t.id}')"` : ''}><i class="ph ${t.icon}"></i> ${esc(t.label)} ${has ? '' : '(0)'}</button>`;
             }).join('');
         }
@@ -558,7 +574,7 @@
                     html += `<div class="mb-4 text-sm text-emerald-100/50">Проверил: <span class="mono text-amber-400">${esc(rec.adminDisplayName || rec.adminUser || '-')}</span> · ${fmtDate(rec.timestamp)}</div>`;
                     if (rec.hardware) {
                         const hw = rec.hardware;
-                        html += `<h3 class="text-white font-bold mb-2 mt-4">Hardware</h3><div class="glass-panel rounded-xl p-4 mb-4"><table class="w-full text-sm">`;
+                        html += `<h3 class="text-white font-bold mb-2 mt-4">Hardware</h3><div class="panel-2 p-4 mb-4"><table class="w-full text-sm">`;
                         html += `<tr><td class="text-emerald-100/40 py-1 w-40">Hostname</td><td class="mono">${esc(hw.hostname)}</td></tr>`;
                         html += `<tr><td class="text-emerald-100/40 py-1">Username</td><td class="mono">${esc(hw.username)}</td></tr>`;
                         html += `<tr><td class="text-emerald-100/40 py-1">OS</td><td>${esc(hw.osVersion)}</td></tr>`;
