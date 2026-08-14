@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS scans (
     link_id TEXT,
     admin_user TEXT,
     admin_display_name TEXT,
-    timestamp INTEGER NOT NULL,
+    timestamp BIGINT NOT NULL,
     hwid TEXT,
     hostname TEXT,
     username TEXT,

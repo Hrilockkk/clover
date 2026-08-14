@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS scans (
     link_id TEXT,
     admin_user TEXT,
     admin_display_name TEXT,
-    "timestamp" INTEGER NOT NULL,
+    "timestamp" BIGINT NOT NULL,
     hwid TEXT,
     hostname TEXT,
     username TEXT,
@@ -83,14 +83,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     level INTEGER NOT NULL DEFAULT 1,
     can_scan INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL
+    created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
@@ -100,10 +100,25 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `;
 
-const DDL_PG = DDL_SQLITE; // диалект совпадает (TEXT/INTEGER, "quoted" идентификаторы)
+// Эпохи хранятся в миллисекундах (Date.now()) — в int4 PostgreSQL они не
+// влезают (max ~2.1e9), поэтому все timestamp-колонки — BIGINT.
+const DDL_PG = DDL_SQLITE; // диалект совпадает (TEXT/BIGINT, "quoted" идентификаторы)
 
 async function initSchema() {
     await sql.exec(USE_PG ? DDL_PG : DDL_SQLITE);
+    if (USE_PG) {
+        // Миграция для существующих развёртываний: поднимаем ms-эпохи до BIGINT.
+        // SQLite эту миграцию не требует (динамическая типизация).
+        const migrations = [
+            'ALTER TABLE users ALTER COLUMN created_at TYPE BIGINT',
+            'ALTER TABLE sessions ALTER COLUMN created_at TYPE BIGINT',
+            'ALTER TABLE sessions ALTER COLUMN expires_at TYPE BIGINT',
+            'ALTER TABLE scans ALTER COLUMN "timestamp" TYPE BIGINT',
+        ];
+        for (const stmt of migrations) {
+            try { await sql.exec(stmt); } catch (_) { /* уже BIGINT или таблицы нет */ }
+        }
+    }
 }
 
 // ─── Scans ──────────────────────────────────────────────────────────────────
