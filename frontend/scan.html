@@ -95,7 +95,6 @@
         const TABS = [
             { id: 'overview',  label: 'Общее',       icon: 'ph-monitor' },
             { id: 'matches',   label: 'Читы',        icon: 'ph-warning' },
-            { id: 'deleted',   label: 'Удалённое',   icon: 'ph-trash' },
             { id: 'dirs',      label: 'Директории',  icon: 'ph-folder' },
             { id: 'network',   label: 'Сеть',        icon: 'ph-wifi-high' },
             { id: 'amcache',   label: 'Amcache',     icon: 'ph-clock' },
@@ -125,7 +124,6 @@
             switch (id) {
                 case 'overview': return 1;
                 case 'matches': return (rec.results || []).length;
-                case 'deleted': return (rec.deletedFiles || []).length + (rec.deletedDirs || []).length;
                 case 'dirs': return (rec.dirs || []).length + (rec.namedFiles || []).length;
                 case 'network': return (rec.cs2Conns || []).length + (rec.cs2Rwx || []).filter(r => g(r, 'BaseAddress', 'baseAddress') > 0).length;
                 case 'amcache': return (rec.amcache || []).length;
@@ -137,7 +135,7 @@
                 case 'bam': return (rec.bam || []).length;
                 case 'processes': return (rec.processes || []).length;
                 case 'drivers': return (rec.drivers || []).length;
-                case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).length; }
+                case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).length + (rec.deletedFiles || []).length + (rec.deletedDirs || []).length; }
                 case 'services': return (rec.services || []).length;
                 default: return 0;
             }
@@ -225,17 +223,6 @@
                         colDate('modified', 'Изменён', 'Modified', 'modified'),
                         colDate('deleted', 'Удалён', 'Deleted', 'deleted')
                     ], (rec.results || []), 'Нет совпадений — чисто');
-
-                case 'deleted': {
-                    const rows = [
-                        ...(rec.deletedFiles || []).map(f => ({ ...f, _type: 'файл' })),
-                        ...(rec.deletedDirs || []).map(d => ({ ...d, _type: 'папка' }))
-                    ];
-                    return renderTable(id, [
-                        { key: 'type', label: 'Тип', sort: 'str', val: r => r._type, html: r => `<span class="tag tag-muted">${r._type}</span>` },
-                        colName, colPath, colDate('deleted', 'Удалён', 'Deleted', 'deleted')
-                    ], rows, 'Нет удалённых объектов');
-                }
 
                 case 'dirs': {
                     const rows = [
@@ -454,6 +441,18 @@
                 colDate('boot', 'Загрузка ОС', 'bootTime'),
                 { key: 'wiped', label: 'Вердикт', sort: 'num', val: r => r.wiped ? 1 : 0, html: r => r.wiped ? '<span class="tag tag-red">ПОЧИЩЕН</span>' : '<span class="tag tag-green">ok</span>' }
             ], journals.map(x => ({ ...x, _hot: !!x.wiped })), 'Нет данных о журналах (нужны права администратора)');
+
+            // ─── Удалённые файлы и директории (MFT + USN) ────────────────
+            const delFiles = rec.deletedFiles || [];
+            const delDirs = rec.deletedDirs || [];
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Удалённые файлы (${delFiles.length})</h3>`;
+            html += renderTable('cleanup_delfiles', [
+                colName, colPath, colDate('deleted', 'Удалён', 'Deleted', 'deleted')
+            ], delFiles, 'Нет удалённых файлов');
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Удалённые директории (${delDirs.length})</h3>`;
+            html += renderTable('cleanup_deldirs', [
+                colName, colPath, colDate('deleted', 'Удалена', 'Deleted', 'deleted')
+            ], delDirs, 'Нет удалённых директорий');
             return html;
         }
 
