@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"scanner/internal/models"
+	"scanner/internal/obfuscate"
 	"scanner/internal/scan"
 )
 
@@ -125,11 +126,42 @@ type Progress struct {
 	done   chan struct{}
 	mu     sync.Mutex
 	active bool
+	// Quiet mode (player-facing auto runs): instead of the detailed bar with
+	// hit/deleted counters, render only "Scanning... N%" to quietOut.
+	quiet    bool
+	quietOut *os.File
 }
 
 // NewProgress creates a progress monitor bound to an engine.
 func NewProgress(e *scan.Engine) *Progress {
 	return &Progress{engine: e}
+}
+
+// SetQuiet switches the progress display to the minimal player-facing
+// percentage line written to out (the real console captured before stdout
+// was silenced).
+func (p *Progress) SetQuiet(out *os.File) {
+	p.mu.Lock()
+	p.quiet = true
+	p.quietOut = out
+	p.mu.Unlock()
+}
+
+// EnterQuietMode redirects os.Stdout/os.Stderr to the null device so verbose
+// collector/engine output never reaches the player's console. It returns the
+// original stdout handle, which remains usable for the minimal progress UI.
+// All internal prints use fmt.Fprintf(os.Stderr/os.Stdout, ...) evaluated at
+// call time, so the reassignment silences every package.
+func EnterQuietMode() *os.File {
+	real := os.Stdout
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		// Better verbose than broken: keep the original console.
+		return real
+	}
+	os.Stdout = devNull
+	os.Stderr = devNull
+	return real
 }
 
 // Start launches a background ticker that redraws the status line.
@@ -171,6 +203,14 @@ func (p *Progress) Stop() {
 	p.mu.Unlock()
 
 	time.Sleep(60 * time.Millisecond) // let ticker goroutine drain
+	if p.quiet {
+		out := p.quietOut
+		if out == nil {
+			out = os.Stdout
+		}
+		fmt.Fprintf(out, "\r%-44s\r%s: 100%%\n", "", obfuscate.MSG_SCANNING())
+		return
+	}
 	p.clear()
 	fmt.Fprintln(os.Stdout)
 }
@@ -184,6 +224,11 @@ func (p *Progress) clear() {
 func (p *Progress) draw() {
 	p.mu.Lock()
 	if !p.active {
+		p.mu.Unlock()
+		return
+	}
+	if p.quiet {
+		p.drawQuiet()
 		p.mu.Unlock()
 		return
 	}
@@ -213,6 +258,33 @@ func (p *Progress) draw() {
 	}
 	fmt.Fprint(os.Stdout, line)
 	p.mu.Unlock()
+}
+
+// drawQuiet renders the player-facing minimal line: just a percentage, no
+// counters, paths or findings. Call with p.mu held.
+func (p *Progress) drawQuiet() {
+	out := p.quietOut
+	if out == nil {
+		out = os.Stdout
+	}
+	total := p.engine.TotalQueued()
+	if total <= 0 {
+		total = p.engine.TotalCandidates()
+	}
+	processed := p.engine.ProcessedFiles()
+
+	var line string
+	if total > 0 {
+		pct := int(float64(processed) * 100.0 / float64(total))
+		if pct > 99 {
+			pct = 99 // 100% is printed only when everything is truly done
+		}
+		line = fmt.Sprintf("%s: %d%%", obfuscate.MSG_SCANNING(), pct)
+	} else {
+		line = obfuscate.MSG_SCANNING() + "..."
+	}
+	// Pad to erase remnants of the previous, possibly longer, line.
+	fmt.Fprintf(out, "\r%-44s\r%s", "", line)
 }
 
 // ─── Compact Results Table ──────────────────────────────────────────────────

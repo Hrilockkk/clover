@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -27,6 +28,12 @@ func Default() *slog.Logger {
 func SetLogger(l *slog.Logger) {
 	once.Do(func() {})
 	logger = l
+}
+
+// SetDiscard silences the default logger entirely (used in player-facing
+// auto-mode so internal diagnostics never reach the console).
+func SetDiscard() {
+	SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // SetLevel updates the minimum level of the default logger.

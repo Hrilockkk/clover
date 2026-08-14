@@ -26,6 +26,8 @@ PING_WAIT=ping 127.0.0.1 -n 2 >nul
 DEL_FMT=@echo off\nset "TARGET=@EXEPATH@"\nset /a TRIES=0\n:retry\nping 127.0.0.1 -n 2 >nul\ndel /f "%TARGET%" >nul 2>&1\nif not exist "%TARGET%" goto cleanup\nset /a TRIES+=1\nif %TRIES% lss 15 goto retry\n:cleanup\ndel /f "%~f0"\n
 
 # Player-facing messages (auto mode stays quiet on purpose).
+MSG_SCAN_START=Starting scan, please wait...
+MSG_SCANNING=Scanning
 MSG_SCAN_DONE=Scan complete. You can close this window.
 MSG_SAVED_LOCAL=Connection failed. Results saved locally - please tell the administrator.
 ERR_INIT=Initialization failed (0x8000). Please restart the program.

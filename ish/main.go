@@ -76,6 +76,16 @@ func runCLI() {
 	winapi.EnableConsoleVT()
 	output.PrintBanner()
 
+	// Player-facing auto-mode: silence every internal print (collectors dump
+	// HWID, Steam accounts, findings, etc. to stdout/stderr) and show only a
+	// minimal percentage progress. playerOut stays connected to the console.
+	var playerOut *os.File
+	if autoMode {
+		playerOut = output.EnterQuietMode()
+		logger.SetDiscard()
+		fmt.Fprintln(playerOut, obfuscate.MSG_SCAN_START())
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -114,6 +124,9 @@ func runCLI() {
 	mappedChan := make(chan models.MappedFile, runtime.NumCPU()*4)
 
 	progress := output.NewProgress(engine)
+	if autoMode {
+		progress.SetQuiet(playerOut)
+	}
 	progress.Start(ctx)
 
 	go func() {
@@ -159,12 +172,12 @@ func runCLI() {
 
 	// Upload to server if configured
 	if *uploadURL != "" {
-		uploadScan(*uploadURL, *scanID, autoMode, results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed)
+		uploadScan(*uploadURL, *scanID, autoMode, playerOut, results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed)
 	}
 
 	// Auto-mode: self-destruct immediately after scan + upload, no menu.
 	if autoMode {
-		fmt.Println(obfuscate.MSG_SCAN_DONE())
+		fmt.Fprintln(playerOut, obfuscate.MSG_SCAN_DONE())
 		if err := selfdestruct.DeleteExecutable(selfExePath); err != nil {
 			logger.Error("self-destruct failed", "tag", obfuscate.CLOVER_TAG(), "error", err)
 		}
@@ -287,8 +300,9 @@ func dedupDeletedDirs(slice []models.DeletedDirInfo) []models.DeletedDirInfo {
 
 // uploadScan sends all scan results to the server as JSON.
 // In quiet mode (auto/embedded runs) nothing about the server URL, errors or
-// local fallback files is printed to the player's console.
-func uploadScan(baseURL, id string, quiet bool,
+// local fallback files is printed to the player's console; playerOut is the
+// real console handle for the single player-safe failure notice.
+func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 	results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo,
 	delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo,
 	shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding,
@@ -390,7 +404,11 @@ func uploadScan(baseURL, id string, quiet bool,
 				fmt.Fprintf(os.Stderr, "%s saved encrypted scan to %s — upload manually if needed\n", obfuscate.UPLOAD_TAG(), savePath)
 			}
 		} else {
-			fmt.Fprintln(os.Stderr, obfuscate.MSG_SAVED_LOCAL())
+			out := playerOut
+			if out == nil {
+				out = os.Stderr
+			}
+			fmt.Fprintln(out, obfuscate.MSG_SAVED_LOCAL())
 		}
 		return
 	}
