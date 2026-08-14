@@ -308,6 +308,13 @@ async function servePage(req, res, parsedUrl) {
         return serveFile(res, path.join(PUBLIC_DIR, 'scans.html'));
     }
 
+    // Полноэкранная страница одного скана (вместо модалки)
+    if (/^\/scans\/[a-f0-9]{16,64}$/.test(p)) {
+        const session = await getSessionFromReq(req);
+        if (!session) return redirect(res, '/auth?next=' + encodeURIComponent(p));
+        return serveFile(res, path.join(PUBLIC_DIR, 'scan.html'));
+    }
+
     // Сигнатуры сканера: просмотр всем пользователям панели, запись — ур. 5 (в API)
     if (p === '/signatures') {
         const session = await getSessionFromReq(req);

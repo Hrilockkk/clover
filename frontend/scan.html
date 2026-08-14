@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Скан — Clover</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/clover.css">
+    <style>
+        .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+        .th-sort:hover { color: rgba(209,250,229,.9); }
+        .th-sort .sort-arrow { font-size: 10px; margin-left: 4px; opacity: .7; }
+        .tab-badge { margin-left: 4px; font-size: 10px; opacity: .75; }
+        td { vertical-align: top; }
+        .path-cell { word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <!-- Top bar -->
+        <header class="flex items-center gap-4 px-6 py-4 border-b border-emerald-300/10 sticky top-0 z-20" style="background:rgba(6,12,9,.92);backdrop-filter:blur(8px)">
+            <a href="/scans" class="btn btn-secondary btn-sm"><i class="ph ph-arrow-left"></i> Все сканы</a>
+            <div class="flex-1 min-w-0">
+                <h1 class="text-lg font-bold text-white truncate" id="headTitle">Скан</h1>
+                <p class="text-emerald-100/40 text-xs truncate" id="headSub">—</p>
+            </div>
+            <span id="headBadge"></span>
+        </header>
+
+        <!-- Tabs -->
+        <nav id="tabsBar" class="flex flex-wrap gap-2 px-6 pt-4"></nav>
+
+        <!-- Content -->
+        <main class="flex-1 px-6 py-4 w-full max-w-[1700px] mx-auto">
+            <div id="tabSearchBar" class="mb-3 hidden">
+                <input type="text" id="tabSearch" placeholder="Поиск по таблице..." class="w-full max-w-md" oninput="onTabSearch(this.value)">
+            </div>
+            <div id="content"></div>
+        </main>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/js/session.js"></script>
+    <script>
+        const scanId = location.pathname.split('/').filter(Boolean).pop();
+
+        function toast(msg, type) {
+            const el = document.createElement('div');
+            el.className = 'toast-item toast-' + (type || 'success');
+            el.textContent = msg;
+            document.getElementById('toast').appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        const esc = window.App.session.escapeHtml;
+        function authHeaders() {
+            const t = window.App.session.getSessionToken();
+            return t ? { 'Authorization': 'Bearer ' + t } : {};
+        }
+
+        // Поле записи с учётом обоих вариантов регистра ключей (Go без тегов
+        // маршалит "Path", с тегами — "path").
+        function g(o, ...keys) {
+            if (!o) return undefined;
+            for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
+            return undefined;
+        }
+
+        function fmtTs(v) {
+            if (!v) return '-';
+            const d = new Date(v);
+            if (isNaN(d) || d.getFullYear() < 2000) return '-';
+            return d.toLocaleString();
+        }
+        function fmtDate(s) { return fmtTs(s); }
+
+        function cleanSerial(v) {
+            const s = String(v ?? '').trim();
+            const ph = ['', 'default string', 'to be filled by o.e.m.', 'to be filled', 'not available', 'not applicable', 'none', 'n/a', 'na', 'unknown', 'null'];
+            return ph.includes(s.toLowerCase()) ? 'n/a' : s;
+        }
+        function fmtSizeGB(v) { return (v === null || v === undefined || isNaN(Number(v))) ? 'n/a' : Math.round(Number(v)) + ' GB'; }
+
+        function matchTag(v) { return v ? `<span class="tag tag-red">${esc(v)}</span>` : ''; }
+
+        let REC = null;
+        let curTab = 'overview';
+        const tabState = {}; // id -> {q, sortKey, dir}
+
+        // ─── Tabs definition ──────────────────────────────────────────────
+        const TABS = [
+            { id: 'overview',  label: 'Общее',       icon: 'ph-monitor' },
+            { id: 'matches',   label: 'Читы',        icon: 'ph-warning' },
+            { id: 'deleted',   label: 'Удалённое',   icon: 'ph-trash' },
+            { id: 'dirs',      label: 'Директории',  icon: 'ph-folder' },
+            { id: 'network',   label: 'Сеть',        icon: 'ph-wifi-high' },
+            { id: 'amcache',   label: 'Amcache',     icon: 'ph-clock' },
+            { id: 'shellbags', label: 'Shellbags',   icon: 'ph-briefcase' },
+            { id: 'appdata',   label: 'AppData',     icon: 'ph-hard-drives' },
+            { id: 'usb',       label: 'USB',         icon: 'ph-usb' },
+            { id: 'prefetch',  label: 'Prefetch',    icon: 'ph-rocket-launch' },
+            { id: 'shimcache', label: 'ShimCache',   icon: 'ph-database' },
+            { id: 'bam',       label: 'BAM',         icon: 'ph-user-switch' },
+            { id: 'processes', label: 'Процессы',    icon: 'ph-gear-six' },
+            { id: 'drivers',   label: 'Драйверы',    icon: 'ph-cpu' },
+            { id: 'cleanup',   label: 'Очистка',     icon: 'ph-broom' },
+            { id: 'services',  label: 'Сервисы',     icon: 'ph-plug' }
+        ];
+
+        function hitCount(rec) {
+            const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
+            const c = rec.cleanup || {};
+            const cleanupHits = (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).filter(j => j.wiped).length;
+            return (rec.results?.length || 0) + (rec.deletedFiles?.length || 0) + (rec.cs2Conns?.length || 0) + (rec.cs2Rwx?.length || 0)
+                + (rec.dirs?.length || 0) + (rec.namedFiles?.length || 0)
+                + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
+                + flagged(rec.shellbagsAll) + cleanupHits;
+        }
+
+        function tabCount(id, rec) {
+            switch (id) {
+                case 'overview': return 1;
+                case 'matches': return (rec.results || []).length;
+                case 'deleted': return (rec.deletedFiles || []).length + (rec.deletedDirs || []).length;
+                case 'dirs': return (rec.dirs || []).length + (rec.namedFiles || []).length;
+                case 'network': return (rec.cs2Conns || []).length + (rec.cs2Rwx || []).filter(r => g(r, 'BaseAddress', 'baseAddress') > 0).length;
+                case 'amcache': return (rec.amcache || []).length;
+                case 'shellbags': return (rec.shellbagsAll || []).length || (rec.shellbags || []).length;
+                case 'appdata': return (rec.appData || []).length;
+                case 'usb': return (rec.hardware?.usb || rec.usb || []).length;
+                case 'prefetch': return (rec.prefetch || []).length;
+                case 'shimcache': return (rec.shimcache || []).length;
+                case 'bam': return (rec.bam || []).length;
+                case 'processes': return (rec.processes || []).length;
+                case 'drivers': return (rec.drivers || []).length;
+                case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).length; }
+                case 'services': return (rec.services || []).length;
+                default: return 0;
+            }
+        }
+
+        function renderTabsBar() {
+            document.getElementById('tabsBar').innerHTML = TABS.map(t => {
+                const n = tabCount(t.id, REC);
+                const active = curTab === t.id;
+                const cls = active ? 'btn btn-primary btn-sm' : (n > 0 ? 'btn btn-secondary btn-sm' : 'btn btn-secondary btn-sm opacity-40');
+                return `<button class="${cls}" onclick="switchTab('${t.id}')"><i class="ph ${t.icon}"></i> ${esc(t.label)}${n ? `<span class="tab-badge">${n}</span>` : ''}</button>`;
+            }).join('');
+        }
+
+        function switchTab(id) {
+            curTab = id;
+            renderTabsBar();
+            renderContent();
+        }
+
+        // ─── Generic searchable + sortable table ──────────────────────────
+        // columns: [{key, label, sort: 'str'|'num'|'date', cls, val(row)=>raw, html(row)=>string}]
+        function st(id) {
+            if (!tabState[id]) tabState[id] = { q: '', sortKey: null, dir: 1 };
+            return tabState[id];
+        }
+
+        function onTabSearch(v) {
+            st(curTab).q = v;
+            renderContent();
+        }
+
+        function sortBy(id, key) {
+            const s = st(id);
+            if (s.sortKey === key) { s.dir = -s.dir; } else { s.sortKey = key; s.dir = 1; }
+            renderContent();
+        }
+
+        function renderTable(id, columns, rows, emptyText) {
+            const s = st(id);
+            let data = rows || [];
+            const q = (s.q || '').trim().toLowerCase();
+            if (q) {
+                data = data.filter(r => columns.some(c => String(c.val(r) ?? '').toLowerCase().includes(q)));
+            }
+            if (s.sortKey) {
+                const col = columns.find(c => c.key === s.sortKey);
+                if (col) {
+                    const typ = col.sort || 'str';
+                    data = [...data].sort((a, b) => {
+                        let va = col.val(a), vb = col.val(b);
+                        if (typ === 'num') { va = Number(va) || 0; vb = Number(vb) || 0; return (va - vb) * s.dir; }
+                        if (typ === 'date') { va = new Date(va || 0).getTime() || 0; vb = new Date(vb || 0).getTime() || 0; return (va - vb) * s.dir; }
+                        return String(va ?? '').localeCompare(String(vb ?? ''), 'ru') * s.dir;
+                    });
+                }
+            }
+            if (!data.length) return `<div class="empty-state"><i class="ph ph-ghost"></i>${esc(emptyText || 'Пусто')}</div>`;
+            const arrow = k => s.sortKey === k ? `<span class="sort-arrow">${s.dir > 0 ? '▲' : '▼'}</span>` : '';
+            let html = `<div class="panel"><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b border-emerald-300/15">`;
+            columns.forEach(c => { html += `<th class="text-left py-2 px-3 th-sort" onclick="sortBy('${id}','${c.key}')">${esc(c.label)}${arrow(c.key)}</th>`; });
+            html += `</tr></thead><tbody>`;
+            data.forEach(r => {
+                const hot = r._hot ? ' bg-rose-500/5' : '';
+                html += `<tr class="border-b border-emerald-300/10${hot}">` + columns.map(c => `<td class="py-2 px-3 ${c.cls || ''}">${c.html(r)}</td>`).join('') + `</tr>`;
+            });
+            html += `</tbody></table></div><div class="px-4 py-2 text-emerald-100/30 text-xs border-t border-emerald-300/10">${data.length} записей</div></div>`;
+            return html;
+        }
+
+        // Колонки-хелперы
+        const colName = { key: 'name', label: 'Имя', sort: 'str', val: r => g(r, 'Name', 'name'), html: r => `<span class="whitespace-nowrap">${esc(g(r, 'Name', 'name') ?? '-')}</span>` };
+        const colPath = { key: 'path', label: 'Путь', sort: 'str', cls: 'path-cell', val: r => g(r, 'Path', 'path', 'FilePath', 'filePath', 'DirPath', 'dirPath'), html: r => `<span class="mono text-xs text-emerald-100/60">${esc(g(r, 'Path', 'path', 'FilePath', 'filePath', 'DirPath', 'dirPath') ?? '-')}</span>` };
+        const colMatched = { key: 'matched', label: 'Совпадение', sort: 'str', val: r => g(r, 'Matched', 'matched', 'flag'), html: r => matchTag(g(r, 'Matched', 'matched') || g(r, 'flag')) };
+        function colDate(key, label, ...fields) {
+            return { key, label, sort: 'date', cls: 'whitespace-nowrap text-emerald-100/40 text-xs', val: r => g(r, ...fields), html: r => esc(fmtTs(g(r, ...fields))) };
+        }
+
+        // ─── Per-tab data builders ────────────────────────────────────────
+        function tabTable(id, rec) {
+            switch (id) {
+                case 'matches':
+                    return renderTable(id, [
+                        colName, colMatched, colPath,
+                        colDate('modified', 'Изменён', 'Modified', 'modified'),
+                        colDate('deleted', 'Удалён', 'Deleted', 'deleted')
+                    ], (rec.results || []), 'Нет совпадений — чисто');
+
+                case 'deleted': {
+                    const rows = [
+                        ...(rec.deletedFiles || []).map(f => ({ ...f, _type: 'файл' })),
+                        ...(rec.deletedDirs || []).map(d => ({ ...d, _type: 'папка' }))
+                    ];
+                    return renderTable(id, [
+                        { key: 'type', label: 'Тип', sort: 'str', val: r => r._type, html: r => `<span class="tag tag-muted">${r._type}</span>` },
+                        colName, colPath, colDate('deleted', 'Удалён', 'Deleted', 'deleted')
+                    ], rows, 'Нет удалённых объектов');
+                }
+
+                case 'dirs': {
+                    const rows = [
+                        ...(rec.dirs || []).map(d => ({ ...d, _type: 'директория', _hot: true })),
+                        ...(rec.namedFiles || []).map(f => ({ ...f, _type: 'файл' }))
+                    ];
+                    return renderTable(id, [
+                        { key: 'type', label: 'Тип', sort: 'str', val: r => r._type, html: r => `<span class="tag tag-amber">${r._type}</span>` },
+                        colName, colPath, colDate('modified', 'Изменён', 'Modified', 'modified')
+                    ], rows, 'Нет целевых директорий/файлов');
+                }
+
+                case 'network': {
+                    const conns = (rec.cs2Conns || []).map(c => ({
+                        _type: 'TCP', _hot: true,
+                        _a: `${g(c, 'RemoteAddress', 'remoteAddress')}:${g(c, 'RemotePort', 'remotePort')}`,
+                        _b: `${g(c, 'LocalAddress', 'localAddress')}:${g(c, 'LocalPort', 'localPort')}`,
+                        _c: g(c, 'State', 'state'), _d: ''
+                    }));
+                    const rwx = (rec.cs2Rwx || []).filter(r => g(r, 'BaseAddress', 'baseAddress') > 0).map(r => ({
+                        _type: 'RWX', _hot: true,
+                        _a: '0x' + Number(g(r, 'BaseAddress', 'baseAddress')).toString(16),
+                        _b: Math.round(Number(g(r, 'RegionSize', 'regionSize') || 0) / 1024) + ' KB',
+                        _c: g(r, 'Protection', 'protection'), _d: g(r, 'RegionType', 'regionType')
+                    }));
+                    const rows = [...conns, ...rwx];
+                    return '<p class="text-emerald-100/40 text-xs mb-2">TCP-подключения и RWX-участки памяти cs2.exe на момент сканирования</p>' + renderTable(id, [
+                        { key: 'type', label: 'Тип', sort: 'str', val: r => r._type, html: r => `<span class="tag tag-red">${r._type}</span>` },
+                        { key: 'a', label: 'Удалённый адрес / Адрес', sort: 'str', cls: 'mono text-xs text-rose-300', val: r => r._a, html: r => esc(r._a) },
+                        { key: 'b', label: 'Локальный / Размер', sort: 'str', cls: 'mono text-xs text-emerald-100/60', val: r => r._b, html: r => esc(r._b) },
+                        { key: 'c', label: 'Состояние / Доступ', sort: 'str', val: r => r._c, html: r => esc(r._c || '-') },
+                        { key: 'd', label: 'Тип памяти', sort: 'str', val: r => r._d, html: r => esc(r._d || '-') }
+                    ], rows, 'cs2.exe не был запущен / сетевых данных нет');
+                }
+
+                case 'amcache':
+                    return renderTable(id, [
+                        colName, colPath, colDate('lastrun', 'Последний запуск', 'LastRun', 'lastRun')
+                    ], (rec.amcache || []).map(a => ({ ...a, _hot: true })), 'Нет данных Amcache');
+
+                case 'shellbags': {
+                    const all = rec.shellbagsAll || [];
+                    if (all.length) {
+                        const rows = all.map(s => ({ ...s, _hot: !!s.matched || s.type === 'deleted' }));
+                        return '<p class="text-emerald-100/40 text-xs mb-2">Все папки из проводника (BagMRU), включая стёртые записи. «Удалённая» — слот выпал из MRUListEx.</p>' + renderTable(id, [
+                            { key: 'name', label: 'Имя', sort: 'str', val: r => r.name, html: r => `<span class="whitespace-nowrap">${esc(r.name || '-')}</span>${matchTag(r.matched)}` },
+                            { key: 'path', label: 'Путь', sort: 'str', cls: 'path-cell', val: r => r.path, html: r => `<span class="mono text-xs text-emerald-100/60">${esc(r.path || '-')}</span>` },
+                            { key: 'type', label: 'Тип', sort: 'str', val: r => r.type, html: r => r.type === 'deleted' ? '<span class="tag tag-amber">удалённая</span>' : '<span class="tag tag-green">существующая</span>' },
+                            { key: 'slot', label: 'Слот', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.slot, html: r => esc(String(r.slot ?? '-')) },
+                            colDate('created', 'Создана', 'created'),
+                            colDate('modified', 'Изменена', 'modified'),
+                            colDate('accessed', 'Открыта', 'accessed'),
+                            colDate('keymod', 'Запись изменена', 'keyModified')
+                        ], rows, 'Нет Shellbags');
+                    }
+                    // Старые сканы: только hits.
+                    return renderTable(id, [
+                        colName, colPath, colDate('lastaccess', 'Последний доступ', 'LastAccess', 'lastAccess')
+                    ], (rec.shellbags || []).map(s => ({ ...s, _hot: true })), 'Нет Shellbags');
+                }
+
+                case 'appdata':
+                    return renderTable(id, [
+                        { key: 'file', label: 'Файл', sort: 'str', cls: 'mono text-xs', val: r => g(r, 'FileName', 'fileName'), html: r => esc(g(r, 'FileName', 'fileName') ?? '-') },
+                        { key: 'dir', label: 'Директория', sort: 'str', cls: 'path-cell', val: r => g(r, 'DirPath', 'dirPath'), html: r => `<span class="mono text-xs text-emerald-100/60">${esc(g(r, 'DirPath', 'dirPath') ?? '-')}</span>` },
+                        colDate('dirmod', 'Дир. изменена', 'DirModified', 'dirModified'),
+                        colDate('filemod', 'Файл изменён', 'FileModified', 'fileModified')
+                    ], (rec.appData || []).map(a => ({ ...a, _hot: true })), 'Нет подозрительных AppData');
+
+                case 'usb': {
+                    const usb = rec.hardware?.usb || rec.usb || [];
+                    return renderTable(id, [
+                        { key: 'fn', label: 'Устройство', sort: 'str', val: r => g(r, 'friendlyName', 'FriendlyName'), html: r => esc(g(r, 'friendlyName', 'FriendlyName') ?? '-') },
+                        { key: 'vidpid', label: 'VID:PID', sort: 'str', cls: 'mono text-xs', val: r => (g(r, 'vid', 'VID') || '') + (g(r, 'pid', 'PID') || ''), html: r => esc((g(r, 'vid', 'VID') || '-') + ':' + (g(r, 'pid', 'PID') || '-')) },
+                        { key: 'serial', label: 'Серийник', sort: 'str', cls: 'mono text-xs', val: r => g(r, 'serialNumber', 'SerialNumber'), html: r => esc(g(r, 'serialNumber', 'SerialNumber') ?? '-') },
+                        colDate('first', 'Первое подключение', 'firstSeen', 'FirstSeen'),
+                        colDate('last', 'Последнее подключение', 'lastSeen', 'LastSeen')
+                    ], usb, 'Нет USB устройств');
+                }
+
+                case 'prefetch':
+                    return '<p class="text-emerald-100/40 text-xs mb-2">Имя программы из .pf файла; «Изменён» ≈ время последнего запуска</p>' + renderTable(id, [
+                        { key: 'name', label: 'Программа', sort: 'str', cls: 'mono text-xs', val: r => r.name, html: r => esc(r.name ?? '-') },
+                        colDate('modified', 'Изменён (посл. запуск)', 'modified'),
+                        colDate('created', 'Создан', 'created'),
+                        colMatched
+                    ], (rec.prefetch || []).map(p => ({ ...p, _hot: !!p.matched })), 'Нет данных Prefetch (нужны права администратора; Prefetch может быть выключен)');
+
+                case 'shimcache':
+                    return '<p class="text-emerald-100/40 text-xs mb-2">Программы, которые видел shim создания процессов; «Запуск» — точно исполнялась</p>' + renderTable(id, [
+                        colPath,
+                        colDate('modified', 'Изменён', 'modified'),
+                        { key: 'exec', label: 'Запуск', sort: 'str', val: r => r.executed ? 1 : 0, html: r => r.executed ? '<span class="tag tag-green">да</span>' : '<span class="text-emerald-100/30">—</span>' },
+                        colMatched
+                    ], (rec.shimcache || []).map(s => ({ ...s, _hot: !!s.matched })), 'Нет данных ShimCache');
+
+                case 'bam':
+                    return renderTable(id, [
+                        { key: 'src', label: 'Источник', sort: 'str', val: r => r.source, html: r => `<span class="tag tag-muted">${esc(r.source)}</span>` },
+                        colPath,
+                        colDate('lastrun', 'Последний запуск', 'lastRun'),
+                        { key: 'sid', label: 'SID', sort: 'str', cls: 'mono text-xs text-emerald-100/40', val: r => r.userSid, html: r => esc(r.userSid ?? '-') },
+                        colMatched
+                    ], (rec.bam || []).map(b => ({ ...b, _hot: !!b.matched })), 'Нет данных BAM/DAM');
+
+                case 'processes':
+                    return renderTable(id, [
+                        { key: 'pid', label: 'PID', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.pid, html: r => esc(String(r.pid ?? '-')) },
+                        colName, colPath, colMatched
+                    ], (rec.processes || []).map(p => ({ ...p, _hot: !!p.matched })), 'Нет данных о процессах');
+
+                case 'drivers':
+                    return '<p class="text-emerald-100/40 text-xs mb-2">blacklist — известный злоупотребляемый (BYOVD) драйвер; recent — недавно добавленный нестандартный</p>' + renderTable(id, [
+                        colName,
+                        { key: 'kind', label: 'Тип', sort: 'str', cls: 'text-xs text-emerald-100/40', val: r => r.kind, html: r => esc(r.kind ?? '-') },
+                        { key: 'img', label: 'Путь образа', sort: 'str', cls: 'path-cell', val: r => r.imagePath, html: r => `<span class="mono text-xs text-emerald-100/60">${esc(r.imagePath ?? '-')}</span>` },
+                        colDate('keymod', 'Ключ изменён', 'keyModified'),
+                        { key: 'flag', label: 'Флаг', sort: 'str', val: r => r.flag, html: r => r.flag === 'blacklist' ? '<span class="tag tag-red">blacklist</span>' : (r.flag ? `<span class="tag tag-amber">${esc(r.flag)}</span>` : '') }
+                    ], (rec.drivers || []).map(d => ({ ...d, _hot: !!d.flag })), 'Нет данных о драйверах');
+
+                case 'services': {
+                    const rows = (rec.services || []).map(s => ({ ...s, _hot: s.exists && s.status !== 'running' }));
+                    return '<p class="text-emerald-100/40 text-xs mb-2">Критичные для артефактов службы — читеры останавливают их, чтобы ослепить Windows (EventLog, PcaSvc, BAM...).</p>' + renderTable(id, [
+                        { key: 'name', label: 'Служба', sort: 'str', cls: 'mono text-xs', val: r => r.name, html: r => esc(r.name) },
+                        { key: 'disp', label: 'Название', sort: 'str', val: r => r.displayName, html: r => esc(r.displayName ?? '-') },
+                        { key: 'exists', label: 'Найдена', sort: 'str', val: r => r.exists ? 1 : 0, html: r => r.exists ? '<span class="tag tag-green">да</span>' : '<span class="tag tag-amber">нет</span>' },
+                        { key: 'status', label: 'Статус', sort: 'str', val: r => r.status, html: r => r.status === 'running' ? '<span class="tag tag-green">running</span>' : `<span class="tag tag-red">${esc(r.status)}</span>` },
+                        { key: 'start', label: 'Тип запуска', sort: 'num', cls: 'text-xs', val: r => r.startType, html: r => esc(startTypeName(r.startType)) },
+                        { key: 'pid', label: 'PID', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.pid || 0, html: r => esc(r.pid ? String(r.pid) : '-') },
+                        colDate('started', 'Время старта', 'startedAt')
+                    ], rows, 'Нет данных о службах');
+                }
+
+                default:
+                    return '';
+            }
+        }
+
+        function startTypeName(v) {
+            return ({ 0: 'boot', 1: 'system', 2: 'auto', 3: 'manual', 4: 'disabled' })[v] ?? ('type ' + v);
+        }
+
+        // ─── Overview / Cleanup (custom renderers) ────────────────────────
+        function renderOverview(rec) {
+            let html = `<div class="mb-4 text-sm text-emerald-100/50">Проверил: <span class="mono text-amber-400">${esc(rec.adminDisplayName || rec.adminUser || '-')}</span> · ${fmtDate(rec.timestamp)} · длительность ${Number(rec.elapsedSeconds || 0).toFixed(1)}с</div>`;
+            const hw = rec.hardware;
+            if (hw) {
+                html += `<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">`;
+                html += `<div class="panel p-5"><h3 class="text-white font-bold mb-3 flex items-center gap-2"><i class="ph ph-cpu text-emerald-300"></i>Hardware</h3><table class="w-full text-sm">`;
+                const row = (k, v, cls) => `<tr><td class="text-emerald-100/40 py-1.5 w-44">${k}</td><td class="${cls || ''}">${v}</td></tr>`;
+                html += row('Hostname', `<span class="mono">${esc(hw.hostname)}</span>`);
+                html += row('Username', `<span class="mono">${esc(hw.username)}</span>`);
+                html += row('OS', esc(hw.osVersion));
+                html += row('MachineGuid', `<span class="mono text-xs">${esc(hw.machineGuid)}</span>`);
+                html += row('CPU', `${esc(hw.cpuName)} <span class="text-emerald-100/40 text-xs">(ID: ${esc(hw.cpuId)})</span>`);
+                html += row('Board', `${esc(hw.boardVendor)} ${esc(hw.boardProduct)} <span class="text-emerald-100/40 text-xs">(S/N: ${esc(cleanSerial(hw.boardSerial))})</span>`);
+                html += row('GPU', esc(hw.gpuName));
+                html += row('System S/N', `<span class="mono">${esc(cleanSerial(hw.systemSerial))}</span>`);
+                (hw.disks || hw.Disks || []).forEach((d, i) => {
+                    html += row('Disk ' + i, `<span class="mono text-xs">${esc(g(d, 'model', 'Model'))} · S/N: ${esc(cleanSerial(g(d, 'serialNumber', 'SerialNumber')))} · ${fmtSizeGB(g(d, 'sizeGB', 'SizeGB'))}</span>`);
+                });
+                html += row('HWID', `<span class="mono text-rose-400 font-bold">${esc(hw.hwid)}</span> <button class="btn btn-ghost btn-icon btn-sm" title="Копировать" onclick="navigator.clipboard.writeText('${esc(hw.hwid)}').then(()=>toast('HWID скопирован'))"><i class="ph ph-copy"></i></button>`, '');
+                html += `</table></div>`;
+                html += `<div>`;
+                if (rec.steam && (rec.steam.accounts || []).length) {
+                    html += `<div class="panel p-5 mb-5"><h3 class="text-white font-bold mb-3 flex items-center gap-2"><i class="ph ph-steam-logo text-emerald-300"></i>Steam</h3>`;
+                    html += `<p class="text-emerald-100/40 text-xs mb-2 mono">${esc(rec.steam.steamPath || '')}</p><table class="w-full text-sm"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">SteamID</th><th class="text-left py-2">Аккаунт</th><th class="text-left py-2">Последний</th><th class="text-left py-2">Время</th></tr></thead><tbody>`;
+                    rec.steam.accounts.forEach(a => {
+                        html += `<tr class="border-b border-emerald-300/10"><td class="mono py-2">${esc(g(a, 'steamId', 'SteamID'))}</td><td>${esc(g(a, 'accountName', 'AccountName'))}</td><td>${g(a, 'mostRecent', 'MostRecent') ? '✓' : ''}</td><td class="text-emerald-100/40 text-xs">${fmtTs(g(a, 'timestamp', 'Timestamp'))}</td></tr>`;
+                    });
+                    html += `</tbody></table></div>`;
+                }
+                html += `</div></div>`;
+            }
+            return html;
+        }
+
+        function renderCleanup(rec) {
+            const c = rec.cleanup || {};
+            const iniDisk = c.iniOnDisk || [];
+            const iniDel = c.iniDeleted || [];
+            const journals = c.journals || [];
+            const wiped = journals.filter(j => j.wiped);
+
+            let banner;
+            if (!iniDisk.length && !iniDel.length && !wiped.length) {
+                banner = `<div class="panel p-4 mb-5 flex items-center gap-3"><i class="ph ph-check-circle text-emerald-400 text-xl"></i><div><div class="text-emerald-300 font-semibold">Следов очистки не найдено</div><div class="text-emerald-100/40 text-xs">shellbag_analyzer_cleaner.ini не найден ни на диске, ни в USN-журнале; журналы USN старше загрузки системы.</div></div></div>`;
+            } else {
+                banner = `<div class="panel p-4 mb-5 flex items-center gap-3" style="border-color:rgba(244,63,94,.35)"><i class="ph ph-warning text-rose-400 text-xl"></i><div><div class="text-rose-300 font-semibold">Обнаружены следы очистки!</div><div class="text-emerald-100/40 text-xs">ini на диске: ${iniDisk.length} · удалённых ini в USN: ${iniDel.length} · пересозданных журналов: ${wiped.length}</div></div></div>`;
+            }
+
+            let html = banner;
+            html += `<h3 class="text-amber-400 font-bold mb-2">shellbag_analyzer_cleaner.ini на диске (${iniDisk.length})</h3>`;
+            html += renderTable('cleanup_ini', [
+                colPath,
+                colDate('created', 'Создан', 'created'),
+                colDate('modified', 'Изменён', 'modified')
+            ], iniDisk.map(x => ({ ...x, _hot: true })), 'Файл не найден (поиск: %USERPROFILE%, %PUBLIC%, %ProgramData%, Windows\\Temp, глубина 5)');
+
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Удалённые ini в USN-журнале (${iniDel.length})</h3>`;
+            html += renderTable('cleanup_usn', [
+                { key: 'name', label: 'Имя', sort: 'str', val: r => r.name, html: r => esc(r.name ?? '-') },
+                colPath,
+                colDate('deleted', 'Удалён', 'deleted')
+            ], iniDel.map(x => ({ ...x, _hot: true })), 'Записей об удалении нет');
+
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">USN-журналы по дискам (${journals.length})</h3>`;
+            html += `<p class="text-emerald-100/40 text-xs mb-2">Проверка по принципу CheckDeletedUSN: если $UsnJrnl создан ПОСЛЕ загрузки системы — журнал был стёрт и пересоздан.</p>`;
+            html += renderTable('cleanup_journals', [
+                { key: 'drive', label: 'Диск', sort: 'str', cls: 'mono', val: r => r.drive, html: r => esc(r.drive) },
+                { key: 'avail', label: 'Доступен', sort: 'str', val: r => r.available ? 1 : 0, html: r => r.available ? '<span class="tag tag-green">да</span>' : `<span class="tag tag-amber">${esc(r.error || 'нет')}</span>` },
+                { key: 'jid', label: 'Journal ID', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.journalId || 0, html: r => esc(String(r.journalId ?? '-')) },
+                { key: 'first', label: 'First USN', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.firstUsn || 0, html: r => esc(String(r.firstUsn ?? '-')) },
+                { key: 'next', label: 'Next USN', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.nextUsn || 0, html: r => esc(String(r.nextUsn ?? '-')) },
+                colDate('created', 'Журнал создан', 'createdAt'),
+                colDate('boot', 'Загрузка ОС', 'bootTime'),
+                { key: 'wiped', label: 'Вердикт', sort: 'num', val: r => r.wiped ? 1 : 0, html: r => r.wiped ? '<span class="tag tag-red">ПОЧИЩЕН</span>' : '<span class="tag tag-green">ok</span>' }
+            ], journals.map(x => ({ ...x, _hot: !!x.wiped })), 'Нет данных о журналах (нужны права администратора)');
+            return html;
+        }
+
+        // ─── Render ───────────────────────────────────────────────────────
+        function renderContent() {
+            const searchBar = document.getElementById('tabSearchBar');
+            const input = document.getElementById('tabSearch');
+            const custom = curTab === 'overview' || curTab === 'cleanup';
+            searchBar.classList.toggle('hidden', custom);
+            if (!custom) { input.value = st(curTab).q; }
+
+            let html;
+            if (curTab === 'overview') html = renderOverview(REC);
+            else if (curTab === 'cleanup') html = renderCleanup(REC);
+            else html = tabTable(curTab, REC);
+            document.getElementById('content').innerHTML = html;
+        }
+
+        async function boot() {
+            const res = await fetch('/api/scans/view/' + scanId, { headers: authHeaders() });
+            if (!res.ok) {
+                document.getElementById('content').innerHTML = '<div class="empty-state"><i class="ph ph-ghost"></i>Скан не найден или нет доступа</div>';
+                return;
+            }
+            REC = await res.json();
+            const hw = REC.hardware || {};
+            document.getElementById('headTitle').textContent = (hw.hostname || 'Скан') + ' · ' + (hw.username || '');
+            document.getElementById('headSub').textContent = `${fmtDate(REC.timestamp)} · проверил ${REC.adminDisplayName || REC.adminUser || '-'} · HWID ${hw.hwid || '-'}`;
+            const hits = hitCount(REC);
+            document.getElementById('headBadge').innerHTML = hits > 0 ? `<span class="tag tag-red text-sm px-3 py-1.5">${hits} находок</span>` : '<span class="tag tag-green text-sm px-3 py-1.5">чисто</span>';
+            document.title = (hw.hostname || 'Скан') + ' — Clover';
+            renderTabsBar();
+            renderContent();
+        }
+
+        boot();
+    </script>
+</body>
+</html>

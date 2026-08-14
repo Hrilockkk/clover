@@ -276,3 +276,75 @@ type DriverEntry struct {
 	KeyModified time.Time `json:"keyModified,omitempty"`
 	Flag        string    `json:"flag,omitempty"` // "blacklist" | "recent"
 }
+
+// ShellbagEntry is one parsed BagMRU slot (like shellbag_analyzer_cleaner):
+// a folder the user opened in Explorer, with its slot number, liveness flag
+// (slots dropped from MRUListEx are old/deleted) and FAT timestamps recovered
+// from the shell item / its 0xBEEF0004 extension block.
+type ShellbagEntry struct {
+	Name       string    `json:"name"`
+	Path       string    `json:"path"` // shell-namespace path (Desktop\C:\... )
+	Type       string    `json:"type"` // "existing" | "deleted"
+	Slot       int       `json:"slot"` // -1 when unknown
+	Created    time.Time `json:"created,omitempty"`
+	Modified   time.Time `json:"modified,omitempty"`
+	Accessed   time.Time `json:"accessed,omitempty"`
+	KeyModTime time.Time `json:"keyModified,omitempty"` // BagMRU key last write
+	Matched    string    `json:"matched,omitempty"`     // target dir name matched in this entry
+}
+
+// ServiceEntry is one forensic-critical Windows service (SysMain, PcaSvc,
+// EventLog, ...): cheaters stop them to blind artifacts.
+type ServiceEntry struct {
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName"`
+	Exists      bool      `json:"exists"`
+	Status      string    `json:"status"`    // "running" | "stopped" | ...
+	StartType   uint32    `json:"startType"` // registry Start (2=auto, 4=disabled)
+	PID         uint32    `json:"pid,omitempty"`
+	StartedAt   time.Time `json:"startedAt,omitempty"` // service process start time
+}
+
+// CleanerIniFinding — shellbag_analyzer_cleaner.ini found on disk.
+type CleanerIniFinding struct {
+	Path     string    `json:"path"`
+	Created  time.Time `json:"created,omitempty"`
+	Modified time.Time `json:"modified,omitempty"`
+}
+
+// DeletedIniFinding — shellbag_analyzer_cleaner.ini seen in USN journal
+// deletion records (player ran the cleaner and deleted it).
+type DeletedIniFinding struct {
+	Name    string    `json:"name"`
+	Path    string    `json:"path"`
+	Deleted time.Time `json:"deleted,omitempty"`
+}
+
+// USNJournalInfo describes one volume's $UsnJrnl state. Wiped = journal was
+// re-created after the current system boot (CheckDeletedUSN principle).
+type USNJournalInfo struct {
+	Drive     string    `json:"drive"`
+	Available bool      `json:"available"`
+	Error     string    `json:"error,omitempty"`
+	JournalID uint64    `json:"journalId,omitempty"`
+	FirstUSN  int64     `json:"firstUsn,omitempty"`
+	NextUSN   int64     `json:"nextUsn,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
+	BootTime  time.Time `json:"bootTime,omitempty"`
+	Wiped     bool      `json:"wiped"`
+}
+
+// CleanupInfo aggregates anti-cleanup evidence for the «Очистка» tab.
+type CleanupInfo struct {
+	IniOnDisk  []CleanerIniFinding `json:"iniOnDisk,omitempty"`
+	IniDeleted []DeletedIniFinding `json:"iniDeleted,omitempty"`
+	Journals   []USNJournalInfo    `json:"journals,omitempty"`
+}
+
+// ExtraArtifacts bundles the newer collector outputs so function signatures
+// stay stable when more collectors are added.
+type ExtraArtifacts struct {
+	ShellbagsAll []ShellbagEntry `json:"shellbagsAll,omitempty"`
+	Services     []ServiceEntry  `json:"services,omitempty"`
+	Cleanup      *CleanupInfo    `json:"cleanup,omitempty"`
+}

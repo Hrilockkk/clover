@@ -9,15 +9,407 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/sys/windows/registry"
+	"scanner/internal/models"
 )
 
 var shellbagRoots = []string{
 	`Software\Microsoft\Windows\Shell\BagMRU`,
 	`Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU`,
+}
+
+// ─── Full BagMRU listing (shellbag_analyzer_cleaner style) ─────────────────
+//
+// BagMRU layout: every key is a folder node; its numeric values (slot names
+// "0","1",...) hold child shell items; the MRUListEx value lists the slots
+// that are still "live" — slots present as values but absent from MRUListEx
+// are old/deleted entries. Folder shell items (0x31/0x32/...) carry a FAT
+// modified timestamp at offset 8 and usually a 0xBEEF0004 extension block
+// with creation/access FAT timestamps.
+
+// fatDateTime converts the packed date/time pair stored in shell items into
+// time.Time. In shell items the LOW word is the FAT date (year-1980:7,
+// month:4, day:5) and the HIGH word is the FAT time (h:5, m:6, s/2:5).
+func fatDateTime(v uint32) time.Time {
+	if v == 0 {
+		return time.Time{}
+	}
+	d, t := v&0xFFFF, v>>16
+	year := int((d>>9)&0x7F) + 1980
+	mon := time.Month((d >> 5) & 0x0F)
+	day := int(d & 0x1F)
+	hh := int(t >> 11)
+	mm := int((t >> 5) & 0x3F)
+	ss := int(t&0x1F) * 2
+	if year < 2000 || year > 2107 || mon < 1 || mon > 12 || day < 1 || day > 31 || hh > 23 || mm > 59 {
+		return time.Time{}
+	}
+	return time.Date(year, mon, day, hh, mm, ss, 0, time.Local)
+}
+
+// parseShellItemName extracts a display name from a shell item blob.
+// Drive items (0x2F) hold "C:\" at offset 3. Folder/file items (0x31/0x32/
+// 0x35/0x36/0x74/0x61) carry the primary ASCII name at offset 14 (right after
+// size/type/filesize/modified/unk); a long UTF-16 name may follow the last
+// 0xBEEF0004 extension block and wins when present.
+func parseShellItemName(data []byte) string {
+	if len(data) < 4 {
+		return ""
+	}
+	typ := data[2]
+	if typ == 0x2F { // drive
+		if name := asciiRunN2(data, 3); name != "" {
+			return name
+		}
+	}
+
+	primary := ""
+	switch typ {
+	case 0x31, 0x32, 0x35, 0x36, 0x61, 0x71, 0x74:
+		primary = asciiRunN2(data, 14)
+		// The primary name field is ANSI: if the real name contains Cyrillic
+		// (or other non-ASCII) chars, the ANSI run is just a garbage prefix —
+		// drop it so the UTF-16 long name wins.
+		if primary != "" && strings.HasSuffix(primary, "?") {
+			primary = ""
+		}
+	}
+
+	// Long name: printable run starting strictly after the LAST 0xBEEF0004
+	// signature, at a real boundary.
+	beef := -1
+	for i := 0; i+4 <= len(data); i++ {
+		if data[i] == 0x04 && data[i+1] == 0x00 && data[i+2] == 0xEF && data[i+3] == 0xBE {
+			beef = i
+		}
+	}
+	longName := ""
+	if beef >= 0 {
+		for i := beef + 4; i < len(data)-2; i++ {
+			if s, n := utf16Run(data, i); s != "" {
+				s = cleanLongName(s, primary)
+				if isPlausibleName(s) && len(s) > len(longName) {
+					longName = s
+				}
+				i += n
+			}
+		}
+	}
+	if len(longName) > len(primary) && isPlausibleName(longName) {
+		return longName
+	}
+	if isPlausibleName(primary) {
+		return primary
+	}
+	return ""
+}
+
+// asciiRunN2 reads a printable ASCII run starting exactly at pos with a hard
+// left boundary (previous byte must be non-printable) — used for the
+// fixed-offset primary name so no header byte can bleed into the string.
+func asciiRunN2(data []byte, pos int) string {
+	if pos >= len(data) || !isPrintableASCII(data[pos]) {
+		return ""
+	}
+	if pos > 0 && isPrintableASCII(data[pos-1]) {
+		return "" // not a real run start
+	}
+	end := pos
+	for end < len(data) && isPrintableASCII(data[end]) {
+		end++
+	}
+	if end-pos < 2 {
+		return ""
+	}
+	return string(data[pos:end])
+}
+
+func isASCIILetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+// cleanLongName fixes the extra head character that Win10/11 shell items
+// sometimes carry before the UTF-16 long name inside the 0xBEEF0004 block
+// (observed: "]browserdownloadsview-x64.zip", "Ooneaccounts-extension",
+// "l_internal"). Two reliable tells: the head is punctuation, or dropping it
+// yields exactly the primary (offset-14) name.
+func cleanLongName(s, primary string) string {
+	rs := []rune(s)
+	if len(rs) < 2 {
+		return s
+	}
+	head, tail := rs[0], string(rs[1:])
+	// Tell 1: leading char cannot begin a filename (']', '|', ...).
+	if !isNameHeadChar(head) {
+		return tail
+	}
+	// Tell 2: tail equals the primary name (case-insensitive) → head is junk.
+	if primary != "" && strings.EqualFold(tail, primary) {
+		return tail
+	}
+	// Tell 3 (no primary): head is an ASCII letter whose lowercase twin also
+	// appears right after — "Ooneaccounts" style ("Oo" + real lowercase name).
+	if primary == "" && len(rs) >= 3 && isASCIILetter(head) &&
+		isASCIILetter(rs[1]) && rs[1] == []rune(strings.ToLower(string(head)))[0] &&
+		strings.Contains(strings.ToLower(tail), strings.ToLower(string(head))) {
+		return tail
+	}
+	return s
+}
+
+// isNameHeadChar reports whether r can plausibly start a file/folder name.
+func isNameHeadChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) ||
+		r == '_' || r == '-' || r == '.' || r == ' ' || r == '(' || r == '~' ||
+		r == '#' || r == '$' || r == '@' || r == '!' || r == '&' || r == '+' ||
+		r == '=' || r == '\'' || r == '`'
+}
+
+// isPlausibleName filters out GUIDs, paths and punctuation-only runs so the
+// candidate pool for item names stays clean.
+func isPlausibleName(s string) bool {
+	if len(s) < 1 || len(s) > 128 {
+		return false
+	}
+	if strings.ContainsAny(s, "{}\\:/") {
+		return false
+	}
+	// Needs at least one letter/digit/cyrillic.
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r > 0x7F {
+			return true
+		}
+	}
+	return false
+}
+
+// asciiRun reads a printable ASCII run starting at pos.
+func asciiRun(data []byte, pos int) string {
+	s, _ := asciiRunN(data, pos)
+	return s
+}
+
+// asciiRunN returns the printable run starting at pos and its byte length.
+// A run is accepted only at a hard boundary (previous byte non-printable) so
+// that scanning never returns a suffix with a garbage prefix character.
+func asciiRunN(data []byte, pos int) (string, int) {
+	if pos >= len(data) || !isPrintableASCII(data[pos]) {
+		return "", 0
+	}
+	if pos > 0 && isPrintableASCII(data[pos-1]) {
+		return "", 0
+	}
+	end := pos
+	for end < len(data) && isPrintableASCII(data[end]) {
+		end++
+	}
+	if end-pos < 2 {
+		return "", 0
+	}
+	return string(data[pos:end]), end - pos
+}
+
+// utf16Run reads a printable UTF-16LE run starting at pos (low byte
+// printable, high byte zero or cyrillic range 0x04xx). Same hard-boundary
+// rule as asciiRunN.
+func utf16Run(data []byte, pos int) (string, int) {
+	if pos+1 >= len(data) {
+		return "", 0
+	}
+	okByte := func(i int) bool {
+		lo, hi := data[i], data[i+1]
+		if hi == 0x00 && lo >= 0x20 && lo < 0x7F {
+			return true
+		}
+		if hi == 0x04 && lo >= 0x10 { // Cyrillic U+0410+
+			return true
+		}
+		return false
+	}
+	if !okByte(pos) {
+		return "", 0
+	}
+	if pos >= 2 && okByte(pos-2) {
+		return "", 0 // mid-run: skip, the real start was already visited
+	}
+	end := pos
+	for end+1 < len(data) && okByte(end) {
+		end += 2
+	}
+	if (end-pos)/2 < 2 {
+		return "", 0
+	}
+	runes := make([]rune, 0, (end-pos)/2)
+	for i := pos; i+1 < end; i += 2 {
+		runes = append(runes, rune(uint16(data[i])|uint16(data[i+1])<<8))
+	}
+	return string(runes), end - pos
+}
+
+// shellItemTimestamps pulls modified (offset 8) and 0xBEEF0004
+// created/accessed FAT timestamps out of the item blob.
+func shellItemTimestamps(data []byte) (created, modified, accessed time.Time) {
+	if len(data) < 12 {
+		return
+	}
+	modified = fatDateTime(binary.LittleEndian.Uint32(data[8:12]))
+	for i := 0; i+16 <= len(data); i++ {
+		if data[i] == 0x04 && data[i+1] == 0x00 && data[i+2] == 0xEF && data[i+3] == 0xBE {
+			// signature u32 at i; creation at i+4, access at i+8
+			if c := fatDateTime(binary.LittleEndian.Uint32(data[i+4 : i+8])); !c.IsZero() {
+				created = c
+			}
+			if a := fatDateTime(binary.LittleEndian.Uint32(data[i+8 : i+12])); !a.IsZero() {
+				accessed = a
+			}
+		}
+	}
+	return
+}
+
+// ScanShellbagsFull enumerates every BagMRU slot in both hives and returns
+// analyzer-style rows: resolved namespace path, slot number, existing/deleted
+// flag and the timestamps recovered from the shell item.
+func ScanShellbagsFull(targets []string) []models.ShellbagEntry {
+	var out []models.ShellbagEntry
+	seen := make(map[string]bool)
+	for _, root := range shellbagRoots {
+		k, err := registry.OpenKey(registry.CURRENT_USER, root, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
+		if err != nil {
+			continue
+		}
+		walkBagKey(k, "Desktop", "", targets, &out, seen)
+		k.Close()
+	}
+	return out
+}
+
+func walkBagKey(k registry.Key, regPath, fsPath string, targets []string, out *[]models.ShellbagEntry, seen map[string]bool) {
+	var keyMod time.Time
+	if info, err := k.Stat(); err == nil {
+		keyMod = info.ModTime()
+	}
+
+	active := map[uint32]bool{}
+	hasMRU := false
+	if raw, _, err := k.GetBinaryValue("MRUListEx"); err == nil && len(raw) >= 4 {
+		hasMRU = true
+		for i := 0; i+4 <= len(raw); i += 4 {
+			v := binary.LittleEndian.Uint32(raw[i:])
+			if v == 0xFFFFFFFF {
+				break
+			}
+			active[v] = true
+		}
+	}
+
+	names, err := k.ReadValueNames(-1)
+	if err != nil {
+		return
+	}
+	subNames, _ := k.ReadSubKeyNames(-1)
+	subSet := make(map[string]bool, len(subNames))
+	for _, s := range subNames {
+		subSet[s] = true
+	}
+
+	for _, vn := range names {
+		slot, err := strconv.Atoi(vn)
+		if err != nil {
+			continue // MRUListEx / NodeSlot etc.
+		}
+		data, _, err := k.GetBinaryValue(vn)
+		if err != nil || len(data) < 4 {
+			continue
+		}
+
+		name := parseShellItemName(data)
+		created, modified, accessed := shellItemTimestamps(data)
+
+		childPath := fsPath
+		if name != "" {
+			if fsPath == "" {
+				childPath = name
+			} else {
+				sep := "\\"
+				if strings.HasSuffix(fsPath, "\\") {
+					sep = ""
+				}
+				childPath = fsPath + sep + name
+			}
+		}
+
+		// Nameless entries are system/GUID items (This PC, Recycle Bin...) —
+		// useless as rows, but their subkeys still hold real child folders.
+		if name != "" {
+			typ := "existing"
+			if hasMRU && !active[uint32(slot)] {
+				typ = "deleted"
+			}
+
+			entry := models.ShellbagEntry{
+				Name:       name,
+				Path:       childPath,
+				Type:       typ,
+				Slot:       slot,
+				Created:    created,
+				Modified:   modified,
+				Accessed:   accessed,
+				KeyModTime: keyMod,
+			}
+			for _, t := range targets {
+				tl := strings.ToLower(strings.TrimSpace(t))
+				if tl != "" && (strings.Contains(strings.ToLower(name), tl) || strings.Contains(strings.ToLower(childPath), tl)) {
+					entry.Matched = t
+					break
+				}
+			}
+			key := childPath + "|" + strconv.Itoa(slot) + "|" + typ
+			if !seen[key] {
+				seen[key] = true
+				*out = append(*out, entry)
+			}
+		}
+
+		// Recurse into the same-numbered subkey with the resolved child path.
+		if subSet[vn] {
+			sk, err := registry.OpenKey(k, vn, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
+			if err != nil {
+				continue
+			}
+			walkBagKey(sk, regPath+"\\"+vn, childPath, targets, out, seen)
+			sk.Close()
+		}
+	}
+
+	// Cleaners often delete the slot VALUES but leave the numbered subkeys
+	// behind — recurse into valueless subkeys too (path stays as-is).
+	for _, sn := range subNames {
+		if _, err := strconv.Atoi(sn); err != nil {
+			continue
+		}
+		hadValue := false
+		for _, vn := range names {
+			if vn == sn {
+				hadValue = true
+				break
+			}
+		}
+		if hadValue {
+			continue // already recursed above
+		}
+		sk, err := registry.OpenKey(k, sn, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
+		if err != nil {
+			continue
+		}
+		walkBagKey(sk, regPath+"\\"+sn, fsPath, targets, out, seen)
+		sk.Close()
+	}
 }
 
 // ShellbagHit stores a single match found inside BagMRU binary data.

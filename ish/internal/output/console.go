@@ -312,8 +312,36 @@ func truncateRunes(s string, n int) string {
 // PrintConsole renders a compact 80-column table with tags. For the bulk
 // collectors (prefetch/shimcache/bam/processes/drivers) only the entries
 // that matched a target name (or were flagged) are shown.
-func PrintConsole(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration) {
+func PrintConsole(results []models.FileInfo, dirs []models.DirInfo, named []models.NamedFileInfo, delFiles []models.DeletedFileInfo, delDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, extra *models.ExtraArtifacts, elapsed time.Duration) {
 	fmt.Println()
+
+	// Cleanup evidence (ini cleaner + wiped USN journals) is high-signal —
+	// surface it at the very top in standalone mode.
+	if extra != nil && extra.Cleanup != nil {
+		for _, f := range extra.Cleanup.IniOnDisk {
+			fmt.Printf("%s[CLEANUP]%s shellbag_analyzer_cleaner.ini on disk: %s\n", ANSIBoldRed, ANSIReset, f.Path)
+		}
+		for _, f := range extra.Cleanup.IniDeleted {
+			fmt.Printf("%s[CLEANUP]%s shellbag_analyzer_cleaner.ini DELETED (USN): %s at %s\n", ANSIBoldRed, ANSIReset, f.Path, f.Deleted.Format("2006-01-02 15:04:05"))
+		}
+		for _, j := range extra.Cleanup.Journals {
+			if j.Wiped {
+				fmt.Printf("%s[CLEANUP]%s USN journal on %s re-created AFTER boot (boot=%s, journal=%s)\n", ANSIBoldRed, ANSIReset, j.Drive, j.BootTime.Format("15:04:05"), j.CreatedAt.Format("2006-01-02 15:04:05"))
+			}
+		}
+	}
+	if extra != nil && len(extra.Services) > 0 {
+		stopped := 0
+		for _, s := range extra.Services {
+			if s.Exists && s.Status != "running" {
+				stopped++
+				fmt.Printf("%s[SVC]%s %s (%s): %s\n", ANSIBoldYellow, ANSIReset, s.Name, s.DisplayName, s.Status)
+			}
+		}
+		if stopped == 0 {
+			fmt.Printf("%s[SVC] all critical services running%s\n", ANSIGreen, ANSIReset)
+		}
+	}
 
 	// Hardware fingerprint
 	if hw != nil {

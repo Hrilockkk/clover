@@ -892,19 +892,25 @@ sequential:
 	}, nil
 }
 
+// cleanerININame: shellbag_analyzer_cleaner.ini in a deletion record proves
+// the shellbag cleaner ran (and the player tried to hide it).
+const cleanerININame = "shellbag_analyzer_cleaner.ini"
+
 // ScanDeletedViaUSN reads the USN journal for deletion records. Deleted .exe
 // entries older than windowHours are skipped (they are usually long gone from
-// the MFT slack as well); 0 disables the time filter.
-func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.SearchRule, targetDirNames []string, windowHours int) (foundFiles []models.FileInfo, foundDirs []models.DeletedDirInfo, err error) {
+// the MFT slack as well); 0 disables the time filter. Additionally every
+// deletion of shellbag_analyzer_cleaner.ini is collected into cleanerIni
+// (no extension/time filter applies to it).
+func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.SearchRule, targetDirNames []string, windowHours int) (foundFiles []models.FileInfo, foundDirs []models.DeletedDirInfo, cleanerIni []models.DeletedIniFinding, err error) {
 	h, err := winapi.OpenVolumeHandle(drive)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer windows.CloseHandle(h)
 
 	journal, err := queryUSNJournal(drive)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	readData := readUsnJournalDataV0{
@@ -984,6 +990,15 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 						dirCount++
 					}
 				} else {
+					// Cleaner artefact: collected regardless of extension
+					// filters and the time window.
+					if strings.EqualFold(name, cleanerININame) {
+						cleanerIni = append(cleanerIni, models.DeletedIniFinding{
+							Name:    name,
+							Path:    fullPath,
+							Deleted: deletedAt,
+						})
+					}
 					nameLower := strings.ToLower(name)
 					pathLower := strings.ToLower(fullPath)
 					isExe := strings.HasSuffix(nameLower, ".exe")
@@ -1054,7 +1069,7 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 	}
 
 	fmt.Printf("\n[USN] %s found %d deleted .exe files, %d deleted .pf files, %d deleted dirs via USN journal (%d records scanned)\n", drive, fileCount, pfCount, dirCount, usnRecords)
-	return foundFiles, foundDirs, nil
+	return foundFiles, foundDirs, cleanerIni, nil
 }
 
 func queryUSNJournal(drive string) (usnJournalDataV0, error) {
@@ -1311,35 +1326,54 @@ func ParseRecycleIFile(iPath string) (models.RecycleInfo, error) {
 
 // PrintUSNStatus prints journal status for all drives.
 func PrintUSNStatus(drives []string) {
-	bootTime := winapi.GetSystemBootTime()
-	fmt.Printf("[USN] System boot time: %s\n", bootTime.Format("2006-01-02 15:04:05"))
-	for _, d := range drives {
-		drive := strings.ToUpper(d)
-		journal, err := queryUSNJournal(drive)
-		if err != nil {
-			fmt.Printf("[USN] %s: unavailable (%v)\n", drive, err)
+	for _, j := range CollectUSNJournalStatus(drives) {
+		if !j.Available {
+			fmt.Printf("[USN] %s: unavailable (%s)\n", j.Drive, j.Error)
 			continue
 		}
-
-		createdAt, createdErr := usnJournalCreationTime(drive)
-		created := "unknown"
-		if createdErr == nil {
-			created = createdAt.Format("2006-01-02 15:04:05")
-		}
-
 		fmt.Printf("[USN] %s: JournalID=%d FirstUSN=%d NextUSN=%d UsnJrnlCreatedAt=%s\n",
-			drive, journal.UsnJournalID, journal.FirstUsn, journal.NextUsn, created)
-		if createdErr != nil {
-			fmt.Printf("[USN] %s: cannot read $Extend\\$UsnJrnl:$J (%v)\n", drive, createdErr)
-			continue
-		}
-		if createdAt.After(bootTime) {
-			fmt.Printf("ПОЧИСТИЛИ USN (%s)\n", drive)
-		}
-		if time.Since(createdAt) < 7*24*time.Hour {
-			fmt.Printf("[WARN] USN journal on %s is very recent (%s). Deleted files may not be detected.\n", drive, created)
+			j.Drive, j.JournalID, j.FirstUSN, j.NextUSN, j.CreatedAt.Format("2006-01-02 15:04:05"))
+		if j.Wiped {
+			fmt.Printf("ПОЧИСТИЛИ USN (%s)\n", j.Drive)
 		}
 	}
+}
+
+// CollectUSNJournalStatus returns structured $UsnJrnl state per drive.
+// Wipe detection follows CheckDeletedUSN: if the $UsnJrnl:$J file creation
+// timestamp is later than the system boot time, the journal was deleted and
+// re-created during this session — i.e. someone wiped it.
+func CollectUSNJournalStatus(drives []string) []models.USNJournalInfo {
+	bootTime := winapi.GetSystemBootTime()
+	out := make([]models.USNJournalInfo, 0, len(drives))
+	for _, d := range drives {
+		drive := strings.ToUpper(d)
+		info := models.USNJournalInfo{Drive: drive, BootTime: bootTime}
+
+		journal, err := queryUSNJournal(drive)
+		if err != nil {
+			info.Error = err.Error()
+			out = append(out, info)
+			continue
+		}
+		info.JournalID = journal.UsnJournalID
+		info.FirstUSN = journal.FirstUsn
+		info.NextUSN = journal.NextUsn
+
+		createdAt, err := usnJournalCreationTime(drive)
+		if err != nil {
+			info.Error = err.Error()
+			out = append(out, info)
+			continue
+		}
+		info.Available = true
+		info.CreatedAt = createdAt
+		if createdAt.After(bootTime) {
+			info.Wiped = true
+		}
+		out = append(out, info)
+	}
+	return out
 }
 
 func usnJournalCreationTime(drive string) (time.Time, error) {

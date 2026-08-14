@@ -25,7 +25,7 @@ func TestEngineAppendResults(t *testing.T) {
 		[]models.DeletedFileInfo{{Path: `C:\del.exe`}},
 		[]models.DeletedDirInfo{{Path: `C:\deldir`}},
 	)
-	res, dirs, named, delFiles, delDirs, _, _, _, _, _, _, _, _, _, _, _, _ := eng.Results()
+	res, dirs, named, delFiles, delDirs, _, _, _, _, _, _, _, _, _, _, _, _, _ := eng.Results()
 	if len(res) != 1 || res[0].Path != `C:\a.exe` {
 		t.Fatalf("unexpected results: %v", res)
 	}
@@ -89,7 +89,7 @@ func feedMatcher(t *testing.T, cfg *config.Cfg, data []byte) []models.FileInfo {
 	}
 	close(mappedChan)
 	eng.Matcher(context.Background(), mappedChan)
-	res, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ := eng.Results()
+	res, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ := eng.Results()
 	return res
 }
 

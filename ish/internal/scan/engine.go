@@ -51,6 +51,10 @@ type Engine struct {
 	bamEntries      []models.BamEntry
 	processes       []models.ProcessEntry
 	drivers         []models.DriverEntry
+	shellbagsAll    []models.ShellbagEntry
+	services        []models.ServiceEntry
+	cleanerDeleted  []models.DeletedIniFinding
+	cleanup         *models.CleanupInfo
 
 	scannedFiles    int64
 	processedFiles  int64
@@ -79,7 +83,7 @@ func (e *Engine) AppendResults(files []models.FileInfo, dirs []models.DirInfo, n
 }
 
 // Results returns the accumulated results (safe copy).
-func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirInfo, namedFiles []models.NamedFileInfo, deletedFiles []models.DeletedFileInfo, deletedDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry) {
+func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirInfo, namedFiles []models.NamedFileInfo, deletedFiles []models.DeletedFileInfo, deletedDirs []models.DeletedDirInfo, shellbags []models.ShellbagFinding, appData []models.AppDataFinding, amcache []models.AmcacheFinding, cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion, hw *models.HardwareInfo, steam *models.SteamInfo, prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bam []models.BamEntry, processes []models.ProcessEntry, drivers []models.DriverEntry, extra *models.ExtraArtifacts) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	results = make([]models.FileInfo, len(e.results))
@@ -122,6 +126,20 @@ func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirIn
 	copy(processes, e.processes)
 	drivers = make([]models.DriverEntry, len(e.drivers))
 	copy(drivers, e.drivers)
+
+	extra = &models.ExtraArtifacts{}
+	if len(e.shellbagsAll) > 0 {
+		extra.ShellbagsAll = make([]models.ShellbagEntry, len(e.shellbagsAll))
+		copy(extra.ShellbagsAll, e.shellbagsAll)
+	}
+	if len(e.services) > 0 {
+		extra.Services = make([]models.ServiceEntry, len(e.services))
+		copy(extra.Services, e.services)
+	}
+	if e.cleanup != nil {
+		cleanupCopy := *e.cleanup
+		extra.Cleanup = &cleanupCopy
+	}
 	return
 }
 
@@ -300,8 +318,19 @@ func (e *Engine) ScanAmcache() {
 	fmt.Fprintf(os.Stderr, "[AMCACHE] Found %d Amcache hits\n", len(findings))
 }
 
-// ScanShellbags scans Explorer shellbags for target directory names.
+// ScanShellbags scans Explorer shellbags for target directory names and
+// additionally stores the full analyzer-style BagMRU listing (all slots,
+// existing + deleted) for the «Shellbags» tab of the scan page.
 func (e *Engine) ScanShellbags() {
+	// Full listing first (independent of hits).
+	full := winapi.ScanShellbagsFull(e.cfg.TargetDirNames)
+	if len(full) > 0 {
+		e.mu.Lock()
+		e.shellbagsAll = append(e.shellbagsAll, full...)
+		e.mu.Unlock()
+		fmt.Fprintf(os.Stderr, "[SHELLBAGS] full listing: %d entries\n", len(full))
+	}
+
 	hits := winapi.ScanShellbags(e.cfg.TargetDirNames)
 	if len(hits) == 0 {
 		return
@@ -318,6 +347,48 @@ func (e *Engine) ScanShellbags() {
 	e.shellbags = append(e.shellbags, findings...)
 	e.mu.Unlock()
 	fmt.Fprintf(os.Stderr, "[SHELLBAGS] Found %d shellbag hits\n", len(findings))
+}
+
+// ScanServices records the state of forensic-critical services (Services.ps1
+// watch list): stopped EventLog/PcaSvc/etc. is a classic anti-artifact move.
+func (e *Engine) ScanServices() {
+	entries := winapi.CollectServices()
+	if len(entries) == 0 {
+		return
+	}
+	stopped := 0
+	for _, s := range entries {
+		if s.Exists && s.Status != "running" {
+			stopped++
+		}
+	}
+	e.mu.Lock()
+	e.services = append(e.services, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[SERVICES] %d checked, %d not running\n", len(entries), stopped)
+}
+
+// ScanCleanup aggregates anti-cleanup evidence for the «Очистка» tab:
+// shellbag_analyzer_cleaner.ini on disk, its deletion records found in the
+// USN journal during the index phase, and per-drive $UsnJrnl wipe status.
+func (e *Engine) ScanCleanup(drives []string) {
+	info := &models.CleanupInfo{
+		IniOnDisk: winapi.SearchCleanerINI(),
+		Journals:  ntfs.CollectUSNJournalStatus(drives),
+	}
+	e.mu.Lock()
+	info.IniDeleted = append(info.IniDeleted, e.cleanerDeleted...)
+	e.cleanup = info
+	e.mu.Unlock()
+
+	wiped := 0
+	for _, j := range info.Journals {
+		if j.Wiped {
+			wiped++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "[CLEANUP] ini on disk: %d, ini deleted (USN): %d, wiped journals: %d/%d\n",
+		len(info.IniOnDisk), len(info.IniDeleted), wiped, len(info.Journals))
 }
 
 // ScanAppDataRoaming scans %APPDATA%\Roaming for files whose name looks
@@ -780,8 +851,14 @@ func (e *Engine) Walker(ctx context.Context, drives []string, pathChan chan<- mo
 			var usnDirs []models.DeletedDirInfo
 			if resolver != nil {
 				var usnFiles []models.FileInfo
-				usnFiles, usnDirs, _ = ntfs.ScanDeletedViaUSN(drive, resolver, e.cfg.Rules, e.cfg.TargetDirNames, e.cfg.USNWindowHours)
+				var cleanerIni []models.DeletedIniFinding
+				usnFiles, usnDirs, cleanerIni, _ = ntfs.ScanDeletedViaUSN(drive, resolver, e.cfg.Rules, e.cfg.TargetDirNames, e.cfg.USNWindowHours)
 				deletedFiles = append(deletedFiles, usnFiles...)
+				if len(cleanerIni) > 0 {
+					e.mu.Lock()
+					e.cleanerDeleted = append(e.cleanerDeleted, cleanerIni...)
+					e.mu.Unlock()
+				}
 			}
 			if len(deletedFiles) > 0 {
 				var keptMatches []models.FileInfo

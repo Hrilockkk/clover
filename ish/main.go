@@ -151,8 +151,10 @@ func runCLI() {
 	safeRun("bamdam", engine.ScanBamDam)
 	safeRun("processes", engine.ScanProcesses)
 	safeRun("drivers", engine.ScanDrivers)
+	safeRun("services", engine.ScanServices)
+	safeRun("cleanup", func() { engine.ScanCleanup(drives) })
 
-	results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers := engine.Results()
+	results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra := engine.Results()
 	results = dedup(results)
 	dirResults = dedupDirs(dirResults)
 	namedFiles = dedupNamed(namedFiles)
@@ -164,15 +166,15 @@ func runCLI() {
 	// the machine only inside the encrypted upload payload.
 	if !autoMode {
 		if *jsonFlag {
-			output.PrintJSON(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed)
+			output.PrintJSON(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra, elapsed)
 		} else {
-			output.PrintConsole(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed)
+			output.PrintConsole(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra, elapsed)
 		}
 	}
 
 	// Upload to server if configured
 	if *uploadURL != "" {
-		uploadScan(*uploadURL, *scanID, autoMode, playerOut, results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed)
+		uploadScan(*uploadURL, *scanID, autoMode, playerOut, results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra, elapsed)
 	}
 
 	// Auto-mode: self-destruct immediately after scan + upload, no menu.
@@ -197,7 +199,7 @@ func runCLI() {
 	switch choice {
 	case 1:
 		jsonPath := fmt.Sprintf("%s%s%s", obfuscate.JSON_PREFIX(), time.Now().Format("20060102_150405"), obfuscate.JSON_SUFFIX())
-		if err := output.SaveJSONFile(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed, jsonPath); err != nil {
+		if err := output.SaveJSONFile(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra, elapsed, jsonPath); err != nil {
 			saveErr = err
 		} else {
 			fmt.Printf("JSON saved: %s\n", jsonPath)
@@ -208,7 +210,7 @@ func runCLI() {
 			fmt.Println("Self-destruct scheduled.")
 		}
 	case 2:
-		if err := output.SaveConsoleResults(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, elapsed, ""); err != nil {
+		if err := output.SaveConsoleResults(results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra, elapsed, ""); err != nil {
 			saveErr = err
 		} else {
 			fmt.Println("Console results saved.")
@@ -309,7 +311,7 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 	cs2Conns []models.CS2Connection, cs2RWX []models.CS2RWXRegion,
 	hw *models.HardwareInfo, steam *models.SteamInfo,
 	prefetch []models.PrefetchEntry, shimcache []models.ShimcacheEntry, bamEntries []models.BamEntry,
-	processes []models.ProcessEntry, drivers []models.DriverEntry, elapsed time.Duration) {
+	processes []models.ProcessEntry, drivers []models.DriverEntry, extra *models.ExtraArtifacts, elapsed time.Duration) {
 
 	payload := struct {
 		ScanID       string                   `json:"scanId"`
@@ -331,6 +333,9 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		Bam          []models.BamEntry        `json:"bam"`
 		Processes    []models.ProcessEntry    `json:"processes"`
 		Drivers      []models.DriverEntry     `json:"drivers"`
+		ShellbagsAll []models.ShellbagEntry   `json:"shellbagsAll"`
+		Services     []models.ServiceEntry    `json:"services"`
+		Cleanup      *models.CleanupInfo      `json:"cleanup,omitempty"`
 		Elapsed      float64                  `json:"elapsedSeconds"`
 	}{
 		ScanID:       id,
@@ -353,6 +358,11 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		Processes:    processes,
 		Drivers:      drivers,
 		Elapsed:      elapsed.Seconds(),
+	}
+	if extra != nil {
+		payload.ShellbagsAll = extra.ShellbagsAll
+		payload.Services = extra.Services
+		payload.Cleanup = extra.Cleanup
 	}
 
 	body, err := json.Marshal(payload)

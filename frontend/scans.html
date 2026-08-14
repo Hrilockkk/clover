@@ -164,19 +164,6 @@
         </main>
     </div>
 
-    <!-- Detail Modal -->
-    <div id="detailModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeDetail()">
-        <div class="modal-card p-6 max-w-4xl w-full max-h-[85vh] flex flex-col">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-bold text-white">Детали скана</h2>
-                <button onclick="closeDetail()" class="btn btn-ghost btn-icon" title="Закрыть">
-                    <i class="ph ph-x"></i>
-                </button>
-            </div>
-            <div id="detailTabs" class="flex flex-wrap gap-2 mb-4 pb-3 border-b border-emerald-300/10"></div>
-            <div id="detailContent" class="overflow-y-auto pr-2"></div>
-        </div>
-    </div>
 
     <div id="toast"></div>
 
@@ -214,8 +201,11 @@
 
         function hitCount(rec) {
             const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
+            const c = rec.cleanup || {};
+            const cleanupHits = (c.iniOnDisk||[]).length + (c.iniDeleted||[]).length + (c.journals||[]).filter(j => j.wiped).length;
             return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0)
-                + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers);
+                + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
+                + flagged(rec.shellbagsAll) + cleanupHits;
         }
 
         function fmtTs(v) {
@@ -475,250 +465,10 @@
                 }).join('') + '</tbody></table>';
         }
 
-        let currentDetailRec = null;
-        let currentDetailTab = 'overview';
-
-        const detailTabs = [
-            { id: 'overview', label: 'Общее', icon: 'ph-monitor' },
-            { id: 'matches', label: 'Читы', icon: 'ph-warning' },
-            { id: 'deleted', label: 'Удалённое', icon: 'ph-trash' },
-            { id: 'dirs', label: 'Директории', icon: 'ph-folder' },
-            { id: 'network', label: 'Сеть', icon: 'ph-wifi-high' },
-            { id: 'amcache', label: 'Amcache', icon: 'ph-clock' },
-            { id: 'shellbags', label: 'Shellbags', icon: 'ph-briefcase' },
-            { id: 'appdata', label: 'AppData', icon: 'ph-hard-drives' },
-            { id: 'usb', label: 'USB', icon: 'ph-usb' },
-            { id: 'prefetch', label: 'Prefetch', icon: 'ph-rocket-launch' },
-            { id: 'shimcache', label: 'ShimCache', icon: 'ph-database' },
-            { id: 'bam', label: 'BAM', icon: 'ph-user-switch' },
-            { id: 'processes', label: 'Процессы', icon: 'ph-gear-six' },
-            { id: 'drivers', label: 'Драйверы', icon: 'ph-cpu' }
-        ];
-
-        // Совпадения/флаги — наверх списка.
-        function matchedFirst(arr) {
-            return [...(arr || [])].sort((a, b) => ((b.matched || b.flag) ? 1 : 0) - ((a.matched || a.flag) ? 1 : 0));
+        // Детали скана — отдельная полноэкранная страница /scans/<id>.
+        function viewScan(id) {
+            window.location.href = '/scans/' + encodeURIComponent(id);
         }
-
-        function matchTag(v) {
-            return v ? `<span class="tag tag-red">${esc(v)}</span>` : '';
-        }
-
-        function isValidRwx(r) {
-            const addr = r.BaseAddress || r.baseAddress || 0;
-            const size = r.RegionSize || r.regionSize || 0;
-            return addr > 0 && size > 0;
-        }
-
-        function validRwxCount(rec) {
-            return (rec.cs2Rwx || []).filter(isValidRwx).length;
-        }
-
-        function tabHasData(tab, rec) {
-            switch (tab) {
-                case 'overview': return !!(rec.hardware || rec.steam);
-                case 'matches': return (rec.results || []).length > 0;
-                case 'deleted': return (rec.deletedFiles || []).length > 0 || (rec.deletedDirs || []).length > 0;
-                case 'dirs': return (rec.dirs || []).length > 0 || (rec.namedFiles || []).length > 0;
-                case 'network': return (rec.cs2Conns || []).length > 0 || validRwxCount(rec) > 0;
-                case 'amcache': return (rec.amcache || []).length > 0;
-                case 'shellbags': return (rec.shellbags || []).length > 0;
-                case 'appdata': return (rec.appData || []).length > 0;
-                case 'usb': return (rec.hardware?.usb || []).length > 0 || (rec.usb || []).length > 0;
-                case 'prefetch': return (rec.prefetch || []).length > 0;
-                case 'shimcache': return (rec.shimcache || []).length > 0;
-                case 'bam': return (rec.bam || []).length > 0;
-                case 'processes': return (rec.processes || []).length > 0;
-                case 'drivers': return (rec.drivers || []).length > 0;
-                default: return false;
-            }
-        }
-
-        function renderDetailTabs() {
-            const el = document.getElementById('detailTabs');
-            el.innerHTML = detailTabs.map(t => {
-                const has = tabHasData(t.id, currentDetailRec);
-                const active = currentDetailTab === t.id;
-                const cls = active ? 'btn btn-primary btn-sm' : (has ? 'btn btn-secondary btn-sm' : 'btn btn-secondary btn-sm opacity-40 cursor-not-allowed');
-                return `<button class="${cls}" ${has ? `onclick="switchDetailTab('${t.id}')"` : ''}><i class="ph ${t.icon}"></i> ${esc(t.label)} ${has ? '' : '(0)'}</button>`;
-            }).join('');
-        }
-
-        function switchDetailTab(tab) {
-            currentDetailTab = tab;
-            renderDetailTabs();
-            renderDetailContent();
-        }
-
-        function renderDetailContent() {
-            const rec = currentDetailRec;
-            let html = '';
-            switch (currentDetailTab) {
-                case 'overview':
-                    html += `<div class="mb-4 text-sm text-emerald-100/50">Проверил: <span class="mono text-amber-400">${esc(rec.adminDisplayName || rec.adminUser || '-')}</span> · ${fmtDate(rec.timestamp)}</div>`;
-                    if (rec.hardware) {
-                        const hw = rec.hardware;
-                        html += `<h3 class="text-white font-bold mb-2 mt-4">Hardware</h3><div class="panel-2 p-4 mb-4"><table class="w-full text-sm">`;
-                        html += `<tr><td class="text-emerald-100/40 py-1 w-40">Hostname</td><td class="mono">${esc(hw.hostname)}</td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">Username</td><td class="mono">${esc(hw.username)}</td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">OS</td><td>${esc(hw.osVersion)}</td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">MachineGuid</td><td class="mono text-xs">${esc(hw.machineGuid)}</td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">CPU</td><td>${esc(hw.cpuName)} <span class="text-emerald-100/40 text-xs">(ID: ${esc(hw.cpuId)})</span></td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">Board</td><td>${esc(hw.boardVendor)} ${esc(hw.boardProduct)} <span class="text-emerald-100/40 text-xs">(S/N: ${cleanSerial(hw.boardSerial)})</span></td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">GPU</td><td>${esc(hw.gpuName)}</td></tr>`;
-                        html += `<tr><td class="text-emerald-100/40 py-1">System S/N</td><td class="mono">${cleanSerial(hw.systemSerial)}</td></tr>`;
-                        if (hw.disks) hw.disks.forEach((d, i) => {
-                            const serial = cleanSerial(d.serialNumber || d.SerialNumber);
-                            const size = fmtSizeGB(d.sizeGB);
-                            html += `<tr><td class="text-emerald-100/40 py-1">Disk ${i}</td><td class="mono text-xs">${esc(d.model)} · S/N: ${serial} · ${size}</td></tr>`;
-                        });
-                        html += `<tr><td class="text-emerald-100/40 py-1 font-bold text-rose-400">HWID</td><td class="mono text-rose-400 font-bold">${esc(hw.hwid)}</td></tr>`;
-                        html += `</table></div>`;
-                    }
-                    if (rec.steam && rec.steam.accounts && rec.steam.accounts.length) {
-                        html += `<h3 class="text-white font-bold mb-2 mt-4">Steam</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">SteamID</th><th class="text-left py-2">Аккаунт</th><th class="text-left py-2">Последний</th><th class="text-left py-2">Время</th></tr></thead><tbody>`;
-                        rec.steam.accounts.forEach(a => { html += `<tr class="border-b border-emerald-300/10"><td class="mono py-2">${esc(a.steamId)}</td><td>${esc(a.accountName)}</td><td>${a.mostRecent ? '✓' : ''}</td><td class="text-emerald-100/40 text-xs">${fmtTs(a.timestamp || a.Timestamp)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    break;
-                case 'matches':
-                    if (rec.results && rec.results.length) {
-                        html += `<h3 class="text-rose-400 font-bold mb-2">Cheat Matches</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Matched</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
-                        rec.results.forEach(f => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(f.Name||f.name)}</td><td><span class="tag tag-red">${esc(f.Matched||f.matched)}</span></td><td class="mono text-emerald-100/40 text-xs">${esc(f.Path||f.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(f.Modified||f.modified)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(f.Deleted||f.deleted)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет совпадений</p>';
-                    break;
-                case 'deleted':
-                    if (rec.deletedFiles && rec.deletedFiles.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Deleted Files</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
-                        rec.deletedFiles.forEach(f => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(f.Name||f.name)}</td><td class="mono text-emerald-100/40 text-xs">${esc(f.Path||f.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(f.Deleted||f.deleted)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    if (rec.deletedDirs && rec.deletedDirs.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2 mt-4">Deleted Directories</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Deleted</th></tr></thead><tbody>`;
-                        rec.deletedDirs.forEach(d => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(d.Name||d.name)}</td><td class="mono text-emerald-100/40 text-xs">${esc(d.Path||d.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(d.Deleted||d.deleted)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    if (!html) html += '<p class="text-emerald-100/40">Нет удалённых объектов</p>';
-                    break;
-                case 'dirs':
-                    if (rec.dirs && rec.dirs.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Target Directories</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th></tr></thead><tbody>`;
-                        rec.dirs.forEach(d => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2"><span class="tag tag-amber">${esc(d.Name||d.name)}</span></td><td class="mono text-emerald-100/40 text-xs">${esc(d.Path||d.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(d.Modified||d.modified)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    if (rec.namedFiles && rec.namedFiles.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2 mt-4">Named Files</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Modified</th></tr></thead><tbody>`;
-                        rec.namedFiles.forEach(f => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(f.Name||f.name)}</td><td class="mono text-emerald-100/40 text-xs">${esc(f.Path||f.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(f.Modified||f.modified)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    if (!html) html += '<p class="text-emerald-100/40">Нет директорий</p>';
-                    break;
-                case 'network':
-                    if (rec.cs2Conns && rec.cs2Conns.length) {
-                        html += `<h3 class="text-rose-400 font-bold mb-2">CS2 Remote Connections</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Remote</th><th class="text-left py-2">State</th><th class="text-left py-2">Local</th></tr></thead><tbody>`;
-                        rec.cs2Conns.forEach(c => { html += `<tr class="border-b border-emerald-300/10"><td class="mono text-rose-400 py-2">${esc(c.RemoteAddress||c.remoteAddress)}:${c.RemotePort||c.remotePort}</td><td>${esc(c.State||c.state)}</td><td class="mono text-emerald-100/40 text-xs">${esc(c.LocalAddress||c.localAddress)}:${c.LocalPort||c.localPort}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    const validRwx = (rec.cs2Rwx || []).filter(isValidRwx);
-                    if (validRwx.length) {
-                        html += `<h3 class="text-rose-400 font-bold mb-2 mt-4">CS2 RWX Memory</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Address</th><th class="text-left py-2">Size</th><th class="text-left py-2">Protection</th><th class="text-left py-2">Type</th></tr></thead><tbody>`;
-                        validRwx.forEach(r => { html += `<tr class="border-b border-emerald-300/10"><td class="mono text-rose-400 py-2">0x${(r.BaseAddress||r.baseAddress||0).toString(16)}</td><td>${Math.round((r.RegionSize||r.regionSize||0)/1024)} KB</td><td>${esc(r.Protection||r.protection)}</td><td>${esc(r.RegionType||r.regionType)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    }
-                    if (!html) html += '<p class="text-emerald-100/40">Нет сетевых данных</p>';
-                    break;
-                case 'amcache':
-                    if (rec.amcache && rec.amcache.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Amcache</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Last Run</th></tr></thead><tbody>`;
-                        rec.amcache.forEach(a => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(a.Name||a.name)}</td><td class="mono text-emerald-100/40 text-xs">${esc(a.Path||a.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(a.LastRun||a.lastRun)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных Amcache</p>';
-                    break;
-                case 'shellbags':
-                    if (rec.shellbags && rec.shellbags.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Shellbags</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Name</th><th class="text-left py-2">Path</th><th class="text-left py-2">Last Access</th></tr></thead><tbody>`;
-                        rec.shellbags.forEach(s => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(s.Name||s.name)}</td><td class="mono text-emerald-100/40 text-xs">${esc(s.Path||s.path)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(s.LastAccess||s.lastAccess)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет Shellbags</p>';
-                    break;
-                case 'appdata':
-                    if (rec.appData && rec.appData.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">AppData Suspicious</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">File</th><th class="text-left py-2">Dir</th><th class="text-left py-2">Dir Modified</th><th class="text-left py-2">File Modified</th></tr></thead><tbody>`;
-                        rec.appData.forEach(a => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2 mono text-xs">${esc(a.FileName||a.fileName)}</td><td class="mono text-emerald-100/40 text-xs">${esc(a.DirPath||a.dirPath)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(a.DirModified||a.dirModified)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(a.FileModified||a.fileModified)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет AppData</p>';
-                    break;
-                case 'usb':
-                    const usb = (rec.hardware && rec.hardware.usb) ? rec.hardware.usb : (rec.usb || []);
-                    if (usb.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">USB Drive Log</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Friendly Name</th><th class="text-left py-2">VID:PID</th><th class="text-left py-2">Serial</th><th class="text-left py-2">First seen</th><th class="text-left py-2">Last seen</th></tr></thead><tbody>`;
-                        usb.forEach(u => { html += `<tr class="border-b border-emerald-300/10"><td class="py-2">${esc(u.friendlyName || u.FriendlyName || '-')}</td><td class="mono text-xs">${esc((u.vid||u.VID||'-') + ':' + (u.pid||u.PID||'-'))}</td><td class="mono text-xs">${esc(u.serialNumber || u.SerialNumber || '-')}</td><td class="text-emerald-100/40 text-xs">${fmtTs(u.firstSeen || u.FirstSeen)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(u.lastSeen || u.LastSeen)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет USB устройств</p>';
-                    break;
-                case 'prefetch': {
-                    const pf = matchedFirst(rec.prefetch);
-                    if (pf.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Prefetch — запуски программ (${pf.length})</h3><p class="text-emerald-100/40 text-xs mb-2">Имя программы из .pf файла; «Изменён» ≈ время последнего запуска</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Программа</th><th class="text-left py-2">Изменён</th><th class="text-left py-2">Создан</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
-                        pf.forEach(p => { html += `<tr class="border-b border-emerald-300/10${p.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs"><span class="block max-w-[300px] truncate" title="${esc(p.name)}">${esc(p.name)}</span></td><td class="text-emerald-100/40 text-xs">${fmtTs(p.modified)}</td><td class="text-emerald-100/40 text-xs">${fmtTs(p.created)}</td><td class="py-2">${matchTag(p.matched)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных Prefetch (нужны права администратора; Prefetch может быть выключен)</p>';
-                    break;
-                }
-                case 'shimcache': {
-                    const sc = matchedFirst(rec.shimcache);
-                    if (sc.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">ShimCache (${sc.length})</h3><p class="text-emerald-100/40 text-xs mb-2">Программы, которые видел shim процессов; ✓ — точно запускалась</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Путь</th><th class="text-left py-2">Изменён</th><th class="text-left py-2">Запуск</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
-                        sc.forEach(s => { html += `<tr class="border-b border-emerald-300/10${s.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs"><span class="block max-w-[380px] truncate" title="${esc(s.path)}">${esc(s.path)}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(s.modified)}</td><td class="text-xs">${s.executed ? '<span class="tag tag-green">да</span>' : '<span class="text-emerald-100/30">—</span>'}</td><td class="py-2">${matchTag(s.matched)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных ShimCache</p>';
-                    break;
-                }
-                case 'bam': {
-                    const bm = matchedFirst(rec.bam);
-                    if (bm.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">BAM/DAM — история запусков по пользователям (${bm.length})</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Источник</th><th class="text-left py-2">Путь</th><th class="text-left py-2">Последний запуск</th><th class="text-left py-2">SID</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
-                        bm.forEach(b => { html += `<tr class="border-b border-emerald-300/10${b.matched ? ' bg-rose-500/5' : ''}"><td class="py-2"><span class="tag tag-muted">${esc(b.source)}</span></td><td class="py-2 mono text-xs"><span class="block max-w-[380px] truncate" title="${esc(b.path)}">${esc(b.path)}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(b.lastRun)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[120px] truncate" title="${esc(b.userSid)}">${esc(b.userSid)}</span></td><td class="py-2">${matchTag(b.matched)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных BAM/DAM</p>';
-                    break;
-                }
-                case 'processes': {
-                    const pr = matchedFirst(rec.processes);
-                    if (pr.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Процессы на момент сканирования (${pr.length})</h3><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">PID</th><th class="text-left py-2">Имя</th><th class="text-left py-2">Путь</th><th class="text-left py-2">Совпадение</th></tr></thead><tbody>`;
-                        pr.forEach(p => { html += `<tr class="border-b border-emerald-300/10${p.matched ? ' bg-rose-500/5' : ''}"><td class="py-2 mono text-xs text-emerald-100/40">${p.pid}</td><td class="py-2 whitespace-nowrap">${esc(p.name)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[380px] truncate" title="${esc(p.path || '')}">${esc(p.path || '-')}</span></td><td class="py-2">${matchTag(p.matched)}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных о процессах</p>';
-                    break;
-                }
-                case 'drivers': {
-                    const dv = matchedFirst(rec.drivers);
-                    if (dv.length) {
-                        html += `<h3 class="text-amber-400 font-bold mb-2">Драйверы (${dv.length})</h3><p class="text-emerald-100/40 text-xs mb-2">blacklist — известный злоупотребляемый (BYOVD) драйвер; recent — недавно добавленный нестандартный драйвер</p><table class="w-full text-sm mb-4"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">Имя</th><th class="text-left py-2">Тип</th><th class="text-left py-2">Путь образа</th><th class="text-left py-2">Ключ изменён</th><th class="text-left py-2">Флаг</th></tr></thead><tbody>`;
-                        dv.forEach(d => { html += `<tr class="border-b border-emerald-300/10${d.flag ? ' bg-rose-500/5' : ''}"><td class="py-2 whitespace-nowrap">${esc(d.name)}</td><td class="text-xs text-emerald-100/40">${esc(d.kind)}</td><td class="mono text-xs text-emerald-100/40"><span class="block max-w-[380px] truncate" title="${esc(d.imagePath || '')}">${esc(d.imagePath || '-')}</span></td><td class="text-emerald-100/40 text-xs whitespace-nowrap">${fmtTs(d.keyModified)}</td><td class="py-2">${d.flag === 'blacklist' ? '<span class="tag tag-red">blacklist</span>' : d.flag ? '<span class="tag tag-amber">' + esc(d.flag) + '</span>' : ''}</td></tr>`; });
-                        html += `</tbody></table>`;
-                    } else html += '<p class="text-emerald-100/40">Нет данных о драйверах</p>';
-                    break;
-                }
-                default:
-                    html += '<p class="text-emerald-100/40">Выберите категорию</p>';
-            }
-            document.getElementById('detailContent').innerHTML = html;
-        }
-
-        async function viewScan(id) {
-            const res = await fetch('/api/scans/view/' + id, { headers: authHeaders() });
-            if (!res.ok) { toast('Скан не найден', 'error'); return; }
-            currentDetailRec = await res.json();
-            currentDetailTab = 'overview';
-            renderDetailTabs();
-            renderDetailContent();
-            document.getElementById('detailModal').classList.remove('hidden');
-        }
-
-        function closeDetail() { document.getElementById('detailModal').classList.add('hidden'); }
     </script>
 </body>
 </html>

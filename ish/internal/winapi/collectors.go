@@ -5,10 +5,12 @@ package winapi
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -392,8 +394,10 @@ func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
 			Size:     info.Size(),
 			Modified: info.ModTime(),
 		}
-		if stat, ok := info.Sys().(*windows.Win32FileAttributeData); ok {
-			entry.Created = FiletimeToTime(stat.CreationTime)
+		// NB: os.FileInfo.Sys() returns *syscall.Win32FileAttributeData — the
+		// x/sys/windows twin type does NOT type-assert here.
+		if stat, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {
+			entry.Created = FiletimeToTime(windows.Filetime{LowDateTime: stat.CreationTime.LowDateTime, HighDateTime: stat.CreationTime.HighDateTime})
 		}
 		entry.Matched = matchTargetName(strings.ToLower(base), strings.ToLower(entry.Path), targetNames)
 		out = append(out, entry)
@@ -405,4 +409,229 @@ func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
 		out = out[:maxPrefetchEntries]
 	}
 	return out
+}
+
+// ─── Critical services (Services.ps1 approach) ──────────────────────────────
+//
+// Cheaters stop these to blind Windows artifacts (BAM, prefetch, event log...).
+// We report existence, status, start type and the hosting process start time.
+
+// forensicServices mirrors the Services.ps1 watch list.
+var forensicServices = []string{
+	"SysMain", "PcaSvc", "DPS", "EventLog", "Schedule", "Bam", "Dusmsvc",
+	"Appinfo", "CDPSvc", "DcomLaunch", "PlugPlay", "WSearch", "DiagTrack", "Power",
+}
+
+func serviceStartTypeName(v uint32) string {
+	switch v {
+	case 0:
+		return "boot"
+	case 1:
+		return "system"
+	case 2:
+		return "auto"
+	case 3:
+		return "manual"
+	case 4:
+		return "disabled"
+	default:
+		return fmt.Sprintf("type(%d)", v)
+	}
+}
+
+// processStartTime returns the creation time of a process (best-effort).
+func processStartTime(pid uint32) time.Time {
+	if pid == 0 {
+		return time.Time{}
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return time.Time{}
+	}
+	defer windows.CloseHandle(h)
+	var ct, et, kt, ut windows.Filetime
+	if err := windows.GetProcessTimes(h, &ct, &et, &kt, &ut); err != nil {
+		return time.Time{}
+	}
+	return FiletimeToTime(ct)
+}
+
+// CollectServices reports the state of the forensic-critical services.
+// Status comes from the SCM with minimal rights (SC_MANAGER_CONNECT +
+// SERVICE_QUERY_STATUS — works without admin); start type and display name
+// come from the services registry key.
+func CollectServices() []models.ServiceEntry {
+	out := make([]models.ServiceEntry, 0, len(forensicServices))
+
+	scm, scmErr := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if scmErr == nil {
+		defer windows.CloseServiceHandle(scm)
+	}
+
+	for _, name := range forensicServices {
+		entry := models.ServiceEntry{Name: name, Status: "not found"}
+
+		// Registry part (HKLM\SYSTEM\CurrentControlSet\Services\<name>).
+		regPath := obfuscate.REG_SERVICES_KEY() + `\` + name
+		if k, err := registry.OpenKey(registry.LOCAL_MACHINE, regPath, registry.QUERY_VALUE); err == nil {
+			entry.Exists = true
+			if dn, _, err := k.GetStringValue("DisplayName"); err == nil {
+				entry.DisplayName = dn
+			}
+			if st, _, err := k.GetIntegerValue("Start"); err == nil {
+				entry.StartType = uint32(st)
+			}
+			k.Close()
+		}
+		if entry.DisplayName == "" {
+			entry.DisplayName = name
+		}
+
+		// Live status via the Service Control Manager (query-only rights).
+		if scmErr == nil {
+			if namePtr, err := windows.UTF16PtrFromString(name); err == nil {
+				if sh, err := windows.OpenService(scm, namePtr, windows.SERVICE_QUERY_STATUS); err == nil {
+					entry.Exists = true
+					var st windows.SERVICE_STATUS
+					if err := windows.QueryServiceStatus(sh, &st); err == nil {
+						entry.Status = serviceStateName(st.CurrentState)
+						if st.CurrentState == uint32(svcRunning) {
+							entry.PID = servicePID(sh)
+							entry.StartedAt = processStartTime(entry.PID)
+						}
+					}
+					windows.CloseServiceHandle(sh)
+				}
+			}
+		}
+		if entry.Exists && entry.Status == "not found" {
+			entry.Status = "unknown"
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+const (
+	svcStopped          = 1
+	svcStartPending     = 2
+	svcStopPending      = 3
+	svcRunning          = 4
+	svcContinuePend     = 5
+	svcPausePending     = 6
+	svcPaused           = 7
+	scStatusProcessInfo = 0 // SC_STATUS_PROCESS_INFO
+)
+
+func serviceStateName(st uint32) string {
+	switch st {
+	case svcStopped:
+		return "stopped"
+	case svcStartPending:
+		return "start pending"
+	case svcStopPending:
+		return "stop pending"
+	case svcRunning:
+		return "running"
+	case svcContinuePend:
+		return "continue pending"
+	case svcPausePending:
+		return "pause pending"
+	case svcPaused:
+		return "paused"
+	default:
+		return fmt.Sprintf("state(%d)", st)
+	}
+}
+
+// servicePID queries the PID of the process hosting the service.
+func servicePID(sh windows.Handle) uint32 {
+	var info serviceStatusProcess
+	var needed uint32
+	err := windows.QueryServiceStatusEx(sh, scStatusProcessInfo, (*byte)(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)), &needed)
+	if err != nil {
+		return 0
+	}
+	return info.ProcessId
+}
+
+type serviceStatusProcess struct {
+	ServiceType             uint32
+	CurrentState            uint32
+	ControlsAccepted        uint32
+	Win32ExitCode           uint32
+	ServiceSpecificExitCode uint32
+	CheckPoint              uint32
+	WaitHint                uint32
+	ProcessId               uint32
+	ServiceFlags            uint32
+}
+
+// ─── shellbag_analyzer_cleaner.ini on disk ──────────────────────────────────
+
+// cleanerININame is the settings file dropped by shellbag_analyzer_cleaner —
+// finding it means the player ran the shellbag cleaner.
+const cleanerININame = "shellbag_analyzer_cleaner.ini"
+
+// cleanerINISearchRoots mirrors Services.ps1: shallow roots where the tool
+// usually sits, searched to a limited depth.
+func cleanerINISearchRoots() []string {
+	var roots []string
+	for _, env := range []string{"USERPROFILE", "PUBLIC", "ProgramData"} {
+		if v := os.Getenv(env); v != "" {
+			roots = append(roots, v)
+		}
+	}
+	if sysRoot := os.Getenv("SystemRoot"); sysRoot != "" {
+		roots = append(roots, filepath.Join(sysRoot, "Temp"))
+	}
+	return roots
+}
+
+// SearchCleanerINI looks for shellbag_analyzer_cleaner.ini on disk
+// (limited depth, like Services.ps1 does).
+func SearchCleanerINI() []models.CleanerIniFinding {
+	var out []models.CleanerIniFinding
+	seen := make(map[string]bool)
+	for _, root := range cleanerINISearchRoots() {
+		walkForCleanerINI(root, 0, 5, &out, seen)
+	}
+	return out
+}
+
+func walkForCleanerINI(dir string, depth, maxDepth int, out *[]models.CleanerIniFinding, seen map[string]bool) {
+	if depth > maxDepth {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		full := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			// Skip reparse points (junctions can loop).
+			if e.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+			walkForCleanerINI(full, depth+1, maxDepth, out, seen)
+			continue
+		}
+		if !strings.EqualFold(e.Name(), cleanerININame) {
+			continue
+		}
+		key := strings.ToLower(full)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		f := models.CleanerIniFinding{Path: full}
+		if info, err := e.Info(); err == nil {
+			f.Modified = info.ModTime()
+			if stat, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {
+				f.Created = FiletimeToTime(windows.Filetime{LowDateTime: stat.CreationTime.LowDateTime, HighDateTime: stat.CreationTime.HighDateTime})
+			}
+		}
+		*out = append(*out, f)
+	}
 }
