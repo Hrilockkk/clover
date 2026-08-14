@@ -44,7 +44,7 @@
                 <div class="page-head">
                     <div>
                         <h1 class="page-title">Ссылки на проверку</h1>
-                        <p class="page-sub">Одноразовая ссылка живёт 10 минут и удаляется после загрузки результата</p>
+                        <p class="page-sub">Скачать exe нужно в течение 10 минут; после скачивания результат принимается ещё 2 часа. Ссылка одноразовая и удаляется после загрузки результата</p>
                     </div>
                 </div>
 
@@ -354,8 +354,8 @@
                 const rndName = 'cl_' + Math.random().toString(36).slice(2, 10) + '.exe';
                 const dlUrl = origin + '/api/scans/download/' + l.id + '?p=' + encodeURIComponent(l.playerPassword || '');
                 const dlUrlB64 = origin + '/api/scans/download-b64/' + l.id + '?p=' + encodeURIComponent(l.playerPassword || '');
-                const cmd = 'curl -sL "' + dlUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '"';
-                const ps = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + dlUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
+                const cmd = 'curl -sL "' + dlUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '" >nul 2>&1';
+                const ps = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + dlUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p -ErrorAction SilentlyContinue"';
                 return `
                 <tr class="border-b border-emerald-300/10">
                     <td class="py-3 px-5">${esc(l.note)}</td>

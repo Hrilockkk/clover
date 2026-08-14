@@ -140,10 +140,12 @@ module.exports = function createScansHandler(deps) {
             // CMD one-liner: скачать clover.exe в TEMP, запустить, удалить.
             // В clover.exe встроен конфиг (uploadUrl, scanId, пароль, админ),
             // поэтому работает полностью автономно и самоуничтожается после скана.
-            const cmdCommand = 'curl -sL "' + downloadUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '"';
+            // exe сам повышается через UAC и самоудаляется после скана;
+            // del тут — лишь подстраховка, её ошибки игроку не нужны.
+            const cmdCommand = 'curl -sL "' + downloadUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '" >nul 2>&1';
             // PowerShell one-liner: качает JSON с base64-бинарём, декодирует, проверяет PE-заголовок
             // (x64), запускает. Обходит CDN, которые подменяют сырой бинарный ответ HTML-челленджем.
-            const psCommand = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + downloadUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p"';
+            const psCommand = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + downloadUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p -ErrorAction SilentlyContinue"';
             sendJson(res, 200, { link, cmdCommand, psCommand, downloadUrl, downloadUrlB64, exeName: rndName });
             return true;
         }
@@ -219,6 +221,9 @@ module.exports = function createScansHandler(deps) {
                 sendError(res, 403, 'FORBIDDEN', 'Invalid password');
                 return true;
             }
+            // Скан с правами админа может идти дольше 10-минутного TTL ссылки —
+            // продлеваем её при скачивании, иначе аплоад результата упадёт с 404.
+            scans.extendLinkExpiry(id);
             const origin = getOrigin(req);
             let buf;
             try {
@@ -251,6 +256,7 @@ module.exports = function createScansHandler(deps) {
                 sendError(res, 403, 'FORBIDDEN', 'Invalid password');
                 return true;
             }
+            scans.extendLinkExpiry(id);
             const origin = getOrigin(req);
             let buf;
             try {

@@ -43,6 +43,15 @@ func main() {
 		_ = anti.StripZoneIdentifier(exe)
 	}
 
+	// Повышение до администратора: без него не работают USN/MFT/Prefetch/
+	// ShimCache/BAM/Amcache. Перезапускаемся через UAC один раз; если игрок
+	// отклонил запрос — продолжаем в деградированном режиме.
+	if !winapi.IsElevated() && !winapi.ElevationRequested() {
+		if err := winapi.RelaunchElevated(); err == nil {
+			return // элевированный экземпляр делает всю работу
+		}
+	}
+
 	runCLI()
 }
 

@@ -29,7 +29,11 @@ const CONFIG_KEY = Buffer.from([
     'tiEJNrFlRv0', '/Ood4hcOif', 'IU2AJ13BVw', 'vtC3wgqDg1Mc='
 ].join(''), 'base64');
 
-const LINK_TTL_MS = 10 * 60 * 1000; // 10 минут
+const LINK_TTL_MS = 10 * 60 * 1000; // 10 минут на СКАЧИВАНИЕ
+// После скачивания exe ссылке продлевается жизнь: полный скан с правами
+// администратора (raw MFT + USN по всем дискам) может идти заметно дольше
+// 10 минут, и результаты не должны отбрасываться с 404.
+const LINK_UPLOAD_GRACE_MS = 2 * 60 * 60 * 1000;
 
 function ensureDirs() {
     try { fs.mkdirSync(LINKS_DIR, { recursive: true }); } catch (_) {}
@@ -104,6 +108,16 @@ function getLink(id) {
         deleteLinkFile(id);
         return null;
     }
+    return link;
+}
+
+// extendLinkExpiry продлевает жизнь ссылки после скачивания exe — на время,
+// достаточное для полного скана и загрузки результата.
+function extendLinkExpiry(id, ttlMs) {
+    const link = getLink(id);
+    if (!link) return null;
+    link.expiresAt = Date.now() + (ttlMs || LINK_UPLOAD_GRACE_MS);
+    writeJsonSafe(linkPath(id), link);
     return link;
 }
 
@@ -377,5 +391,7 @@ module.exports = {
     DEFAULT_SIGNATURES,
     encryptConfig,
     decryptPayload,
-    LINK_TTL_MS
+    extendLinkExpiry,
+    LINK_TTL_MS,
+    LINK_UPLOAD_GRACE_MS
 };

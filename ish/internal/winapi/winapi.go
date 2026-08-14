@@ -6,6 +6,7 @@ package winapi
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unsafe"
@@ -104,6 +105,65 @@ func GetSystemBootTime() time.Time {
 	getTickCount64 := kernel32.NewProc("GetTickCount64")
 	uptimeMs, _, _ := getTickCount64.Call()
 	return time.Now().Add(-time.Duration(uptimeMs) * time.Millisecond)
+}
+
+// ─── UAC elevation ──────────────────────────────────────────────────────────
+//
+// MFT/USN/Prefetch/ShimCache/BAM all require admin rights, but the player
+// launches the exe from a regular console. We relaunch ourselves once via
+// ShellExecute("runas"); the marker env var prevents an elevation loop.
+// If UAC is declined/unavailable the caller continues in degraded mode.
+
+const elevMarkerEnv = "CLOVER_ELEVATED"
+
+// IsElevated reports whether the current process token is elevated.
+func IsElevated() bool {
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		return false
+	}
+	defer token.Close()
+	return token.IsElevated()
+}
+
+// ElevationRequested reports whether this process is the already-relaunched
+// instance (marker set by the parent before ShellExecute).
+func ElevationRequested() bool {
+	return os.Getenv(elevMarkerEnv) != ""
+}
+
+// RelaunchElevated starts a copy of the current executable with the same
+// arguments elevated via UAC and returns nil on success. The caller should
+// exit immediately afterwards — the elevated instance does the work.
+func RelaunchElevated() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if real, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+		exe = real
+	}
+
+	// Quote each arg so paths with spaces survive.
+	var b strings.Builder
+	for i, a := range os.Args[1:] {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteByte('"')
+		b.WriteString(strings.ReplaceAll(a, `"`, `\"`))
+		b.WriteByte('"')
+	}
+
+	// The marker must be set BEFORE ShellExecute: the child inherits our
+	// environment block.
+	os.Setenv(elevMarkerEnv, "1")
+
+	verb, _ := windows.UTF16PtrFromString("runas")
+	file, _ := windows.UTF16PtrFromString(exe)
+	params, _ := windows.UTF16PtrFromString(b.String())
+	dir, _ := windows.UTF16PtrFromString(filepath.Dir(exe))
+	return windows.ShellExecute(0, verb, file, params, dir, 1)
 }
 
 func GetDrives() []string {
