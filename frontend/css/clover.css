@@ -22,12 +22,15 @@
     --amber: #fbbf24;
     --radius-panel: 10px;
     --radius-ctl: 8px;
-    --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 16px 42px rgba(0, 0, 0, 0.48);
+    --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.22);
+    --gradient-accent: linear-gradient(135deg, #34d399 0%, #a3e635 100%);
 }
 
 body {
     font-family: 'Golos Text', system-ui, sans-serif;
     color: var(--text);
+    background-image: radial-gradient(ellipse 75% 45% at 50% -12%, rgba(52, 211, 153, 0.07), transparent 68%);
     background: var(--bg);
     font-size: 14px;
     line-height: 1.5;
@@ -50,9 +53,10 @@ body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.18); border-ra
 
 /* ─── Поверхности ───────────────────────────────────────────────────────── */
 .panel {
-    background: var(--surface);
+    background: linear-gradient(145deg, rgba(15, 29, 20, 0.98), rgba(8, 20, 13, 0.98));
     border: 1px solid var(--border);
     border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-soft);
 }
 .panel-2 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-ctl); }
 
@@ -91,8 +95,9 @@ body::-webkit-scrollbar-thumb { background: rgba(110, 231, 183, 0.18); border-ra
     white-space: nowrap;
 }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: var(--emerald); color: #04170e; }
-.btn-primary:hover:not(:disabled) { background: #4adeab; }
+.btn-primary { background: var(--gradient-accent); color: #04170e; box-shadow: 0 5px 16px rgba(52, 211, 153, 0.16); }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
 .btn-secondary { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
 .btn-secondary:hover:not(:disabled) { background: var(--surface-3); border-color: rgba(110, 231, 183, 0.32); }
 .btn-ghost { background: transparent; color: var(--text-dim); border-color: transparent; }
@@ -334,10 +339,13 @@ tbody tr:hover { background: rgba(110, 231, 183, 0.04); }
 .sidebar-user .u-name { font-size: 13.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user .u-sub { font-size: 11.5px; color: var(--text-faint); }
 
-.app-content { flex: 1; min-width: 0; padding: 24px 28px 48px; max-width: 1440px; }
+.app-content { flex: 1; min-width: 0; padding: 30px 34px 56px; max-width: 1500px; }
+.app-content > * { animation: content-in 0.24s ease both; }
+@keyframes content-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.page-title { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
-.page-sub { font-size: 13px; color: var(--text-faint); margin-top: 4px; }
+.page-title { font-size: 23px; font-weight: 700; color: #fff; letter-spacing: -0.025em; display: flex; align-items: center; gap: 10px; }
+.page-sub { font-size: 13px; color: var(--text-faint); margin-top: 6px; max-width: 720px; }
+.page-head::after { content: ''; display: block; width: 54px; height: 3px; border-radius: 99px; background: var(--gradient-accent); margin-top: 14px; opacity: 0.8; }
 .page-actions { display: flex; gap: 8px; flex: none; }
 
 /* Мобильная версия: сайдбар → верхняя лента */
@@ -349,7 +357,21 @@ tbody tr:hover { background: rgba(110, 231, 183, 0.04); }
     .side-item { width: auto; flex: none; border-left: none; border-bottom: 2px solid transparent; border-radius: 7px; }
     .side-item.active { border-left: none; border-bottom-color: var(--emerald); border-radius: 7px 7px 0 0; margin-left: 0; width: auto; }
     .sidebar-user { border-top: none; border-left: 1px solid var(--border); }
-    .app-content { padding: 18px 16px 40px; max-width: none; }
+    .app-content { padding: 20px 14px 40px; max-width: none; }
+    .page-title { font-size: 20px; }
+    .page-head { margin-bottom: 18px; }
+    .panel { border-radius: 9px; }
+}
+@media (max-width: 560px) {
+    .sidebar-head { padding: 12px 14px; }
+    .sidebar-user { padding: 8px 10px; }
+    .sidebar-nav { scrollbar-width: none; }
+    .sidebar-nav::-webkit-scrollbar { display: none; }
+    .app-content { padding-left: 10px; padding-right: 10px; }
+    .page-actions, .page-actions .btn { width: 100%; }
+    .page-actions { flex-wrap: wrap; }
+    #toast { left: 10px; right: 10px; bottom: 10px; }
+    .toast-item { width: 100%; }
 }
 
 /* ─── Рамка браузера (мок на лендинге) ──────────────────────────────────── */

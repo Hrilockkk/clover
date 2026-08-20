@@ -11,8 +11,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/clover.css">
     <style>
-        .site-nav { position: sticky; top: 0; z-index: 100; background: rgba(6, 15, 10, 0.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
-        .hero-title { font-weight: 700; letter-spacing: -0.02em; }
+        .site-nav { position: sticky; top: 0; z-index: 100; background: rgba(6, 15, 10, 0.88); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+        .hero-title { font-weight: 700; letter-spacing: -0.035em; }
+        .hero-orb { position: absolute; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(52,211,153,.11), transparent 68%); filter: blur(8px); pointer-events: none; }
+        .hero-grid { background-image: linear-gradient(rgba(110,231,183,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(110,231,183,.035) 1px, transparent 1px); background-size: 32px 32px; mask-image: linear-gradient(to bottom, black, transparent); }
         .feature-icon { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: rgba(52,211,153,0.10); border: 1px solid rgba(110,231,183,0.18); flex: none; }
         .step-line::after { content: ''; position: absolute; top: 22px; left: calc(50% + 34px); width: calc(100% - 68px); height: 1px; background: var(--border-strong); }
         .step-line:last-child::after { display: none; }
@@ -40,7 +42,9 @@
 
         <main class="flex-1 max-w-[1160px] w-full mx-auto px-6">
             <!-- Hero -->
-            <section class="pt-14 pb-16 grid lg:grid-cols-[1fr_1.25fr] gap-12 items-center">
+            <section class="relative pt-14 pb-16 grid lg:grid-cols-[1fr_1.25fr] gap-12 items-center overflow-hidden">
+                <div class="hero-orb -left-40 -top-24"></div>
+                <div class="hero-grid absolute inset-x-0 top-0 h-72 opacity-60 pointer-events-none"></div>
                 <div>
                     <span class="tag tag-em mb-5"><i class="ph ph-clover"></i>Clover Scan · система проверки игроков</span>
                     <h1 class="hero-title text-4xl sm:text-[2.9rem] text-white leading-[1.12] mb-5">

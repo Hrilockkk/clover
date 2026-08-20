@@ -43,13 +43,15 @@
             <div id="linksTab">
                 <div class="page-head">
                     <div>
+                        <div class="flex items-center gap-2 mb-2"><span class="tag tag-lime"><i class="ph ph-broadcast"></i>Контроль проверок</span><span class="text-emerald-100/30 text-xs mono">LIVE</span></div>
                         <h1 class="page-title">Ссылки на проверку</h1>
-                        <p class="page-sub">Скачать exe нужно в течение 10 минут; после скачивания результат принимается ещё 2 часа. Ссылка одноразовая и удаляется после загрузки результата</p>
+                        <p class="page-sub">Создавайте персональную ссылку, отправляйте её игроку и получайте полный отчёт в панели. Ссылка одноразовая.</p>
                     </div>
                 </div>
 
                 <!-- Create link -->
-                <div class="panel p-5 mb-5">
+                <div class="panel p-5 mb-5 relative overflow-hidden">
+                    <div class="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-emerald-300/5 blur-2xl pointer-events-none"></div>
                     <h2 class="text-[15px] font-semibold text-white mb-4 flex items-center gap-2">
                         <i class="ph ph-terminal text-emerald-300"></i>
                         Создать команду для проверки
@@ -96,8 +98,9 @@
             <div id="scansTab" class="hidden">
                 <div class="page-head">
                     <div>
+                        <div class="flex items-center gap-2 mb-2"><span class="tag tag-em"><i class="ph ph-chart-line-up"></i>История</span><span class="text-emerald-100/30 text-xs">Последние 500</span></div>
                         <h1 class="page-title">Все сканы</h1>
-                        <p class="page-sub">Результаты проверок, от новых к старым</p>
+                        <p class="page-sub">Краткая сводка загружается быстро. Откройте строку, чтобы посмотреть подробности конкретной проверки.</p>
                     </div>
                 </div>
 
@@ -149,14 +152,16 @@
             <div id="searchTab" class="hidden">
                 <div class="page-head">
                     <div>
-                        <h1 class="page-title">Поиск</h1>
-                        <p class="page-sub">По SteamID, HWID, нику, хосту или админу</p>
+                        <div class="flex items-center gap-2 mb-2"><span class="tag tag-amber"><i class="ph ph-funnel"></i>Фильтры</span></div>
+                        <h1 class="page-title">Поиск по истории</h1>
+                        <p class="page-sub">Найдите проверку по SteamID, HWID, нику, хосту или админу.</p>
                     </div>
                 </div>
                 <div class="panel p-5">
-                    <div class="flex gap-3 mb-2">
-                        <input type="text" id="searchInput" placeholder="76561198..., HWID, ник, админ..." class="flex-1" onkeydown="if(event.key==='Enter')doSearch()">
-                        <button onclick="doSearch()" class="btn btn-primary"><i class="ph ph-magnifying-glass"></i>Искать</button>
+                    <div class="flex gap-3 mb-2 flex-wrap">
+                        <div class="relative flex-1 min-w-[220px]"><i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-emerald-200/35"></i>
+                        <input type="text" id="searchInput" placeholder="76561198..., HWID, ник, админ..." class="w-full pl-10" onkeydown="if(event.key==='Enter')doSearch()"></div>
+                        <button onclick="doSearch()" class="btn btn-primary"><i class="ph ph-magnifying-glass"></i>Найти</button>
                     </div>
                     <div id="searchResults"></div>
                 </div>
