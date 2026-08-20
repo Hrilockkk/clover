@@ -177,6 +177,18 @@ module.exports = function createScansHandler(deps) {
             sendJson(res, 200, { scans: await scans.searchRecords(q), query: q });
             return true;
         }
+        if (parsedUrl.pathname === '/api/scans/export' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const rows = await scans.listRecords();
+            const csv = ['scanId,timestamp,admin,hostname,hwid,hits', ...rows.map(s => [s.scanId, s.timestamp, s.adminDisplayName || s.adminUser || '', s.hardware?.hostname || '', s.hardware?.hwid || '', s.hitCount || 0].map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(','))].join('\n');
+            res.writeHead(200, {
+                'Content-Type': 'text/csv; charset=utf-8',
+                'Content-Disposition': 'attachment; filename=clover-scans.csv'
+            });
+            res.end('\ufeff' + csv);
+            return true;
+        }
         if (/^\/api\/scans\/view\/[a-f0-9]+$/.test(parsedUrl.pathname) && req.method === 'GET') {
             const session = await requireScanAccess(req, res);
             if (!session) return true;

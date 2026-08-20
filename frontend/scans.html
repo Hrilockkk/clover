@@ -133,7 +133,7 @@
                             <i class="ph ph-clipboard-text text-emerald-300"></i>
                             Результаты
                         </h2>
-                        <button onclick="loadScans()" class="btn btn-ghost btn-sm" title="Обновить"><i class="ph ph-arrows-clockwise"></i></button>
+                        <div class="flex items-center gap-2"><button onclick="exportScans()" class="btn btn-secondary btn-sm"><i class="ph ph-download-simple"></i><span class="hidden sm:inline">CSV</span></button><button onclick="loadScans();loadScanStats()" class="btn btn-ghost btn-sm" title="Обновить"><i class="ph ph-arrows-clockwise"></i></button></div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full">
@@ -434,6 +434,13 @@
         }
 
         // ─── Scans ─────────────────────────────────────────────
+        function exportScans() {
+            const token = window.App?.session?.getSessionToken?.() || JSON.parse(localStorage.getItem('user') || '{}').sessionToken || '';
+            const link = document.createElement('a');
+            link.href = '/api/scans/export' + (token ? '?token=' + encodeURIComponent(token) : '');
+            link.click();
+        }
+
         async function loadScanStats() {
             const res = await fetch('/api/scans/stats', { headers: authHeaders() });
             if (!res.ok) return;

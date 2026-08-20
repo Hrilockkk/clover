@@ -207,7 +207,8 @@ async function getStats() {
         total: scans.length,
         flagged: scans.filter(s => (s.hitCount || 0) > 0).length,
         clean: scans.filter(s => !(s.hitCount || 0)).length,
-        last24h: scans.filter(s => now - Number(s.timestamp || 0) <= 24 * 60 * 60 * 1000).length
+        last24h: scans.filter(s => now - Number(s.timestamp || 0) <= 24 * 60 * 60 * 1000).length,
+        latest: scans[0] || null
     };
 }
 
