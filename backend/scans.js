@@ -156,7 +156,7 @@ async function init() {
 
 async function migrateRecordsFromFiles() {
     try {
-        const existing = await db.listScanRecords();
+        const existing = await db.listScanSummaries();
         if (existing.length > 0) return;
         let entries = [];
         try { entries = fs.readdirSync(RECORDS_DIR); } catch (_) {}
@@ -190,12 +190,6 @@ async function saveRecord(rec) {
 async function getRecord(id) {
     if (!id || !/^[a-f0-9]+$/.test(id)) return null;
     return db.getScanRecord(id);
-}
-
-async function getRecordSummary(id) {
-    const rec = await db.getScanSummary(id);
-    if (!rec) return null;
-    return rec;
 }
 
 async function listRecords() {

@@ -202,12 +202,12 @@ async function searchScanSummaries(q, limit) {
         SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids
         FROM scans
         WHERE hwid LIKE ? ESCAPE '\\'
-           OR hostname LIKE ? ESCAPE '\'
-           OR username LIKE ? ESCAPE '\'
-           OR steam_ids LIKE ? ESCAPE '\'
-           OR steam_names LIKE ? ESCAPE '\'
-           OR admin_user LIKE ? ESCAPE '\'
-           OR admin_display_name LIKE ? ESCAPE '\'
+           OR hostname LIKE ? ESCAPE '\\'
+           OR username LIKE ? ESCAPE '\\'
+           OR steam_ids LIKE ? ESCAPE '\\'
+           OR steam_names LIKE ? ESCAPE '\\'
+           OR admin_user LIKE ? ESCAPE '\\'
+           OR admin_display_name LIKE ? ESCAPE '\\'
         ORDER BY "timestamp" DESC
         LIMIT ?
     `, [like, like, like, like, like, like, like, lim]);
