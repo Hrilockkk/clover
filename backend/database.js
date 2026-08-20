@@ -30,11 +30,14 @@ let sql;
 if (USE_PG) {
     const { Pool } = require('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    // Без обработчика 'error' ошибка на idle-клиенте (разрыв TCP, рестарт
+    // PostgreSQL) уронит весь процесс через unhandled error.
+    pool.on('error', (e) => { console.error('[db] ошибка idle-клиента PostgreSQL:', e.message); });
     const toPg = (text) => { let i = 0; return text.replace(/\?/g, () => '$' + (++i)); };
     sql = {
         all: async (t, p = []) => (await pool.query(toPg(t), p)).rows,
         get: async (t, p = []) => ((await pool.query(toPg(t), p)).rows[0]) ?? null,
-        run: async (t, p = []) => { await pool.query(toPg(t), p); },
+        run: async (t, p = []) => (await pool.query(toPg(t), p)).rowCount,
         exec: async (t) => { await pool.query(t); }
     };
 } else {
@@ -47,7 +50,7 @@ if (USE_PG) {
     sql = {
         all: async (t, p = []) => db.prepare(t).all(...p),
         get: async (t, p = []) => db.prepare(t).get(...p) ?? null,
-        run: async (t, p = []) => { db.prepare(t).run(...p); },
+        run: async (t, p = []) => db.prepare(t).run(...p).changes,
         exec: async (t) => { db.exec(t); }
     };
 }
@@ -141,21 +144,20 @@ function extractScanFields(rec) {
     ];
 }
 
-const UPSERT_SCAN = `
+// Строгий INSERT: запись с существующим id НЕ перезаписывается — иначе
+// повторный/поддельный upload мог бы затереть уже сохранённый результат.
+// Возвращаемое значение saveScanRecord — true, если запись действительно создана.
+const INSERT_SCAN = `
     INSERT INTO scans (id, link_id, admin_user, admin_display_name, "timestamp",
                        hwid, hostname, username, steam_ids, steam_names, payload)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-        link_id=excluded.link_id, admin_user=excluded.admin_user,
-        admin_display_name=excluded.admin_display_name, "timestamp"=excluded."timestamp",
-        hwid=excluded.hwid, hostname=excluded.hostname, username=excluded.username,
-        steam_ids=excluded.steam_ids, steam_names=excluded.steam_names,
-        payload=excluded.payload
+    ON CONFLICT(id) DO NOTHING
 `;
 
 async function saveScanRecord(rec) {
     if (!rec || !rec.scanId) throw new Error('scan record without scanId');
-    await sql.run(UPSERT_SCAN, extractScanFields(rec));
+    const changes = await sql.run(INSERT_SCAN, extractScanFields(rec));
+    return Number(changes) > 0;
 }
 
 async function getScanRecord(id) {
@@ -164,27 +166,52 @@ async function getScanRecord(id) {
     try { return JSON.parse(row.payload); } catch (_) { return null; }
 }
 
-async function listScanRecords() {
-    const rows = await sql.all('SELECT payload FROM scans ORDER BY "timestamp" DESC');
-    return rows.map(r => { try { return JSON.parse(r.payload); } catch (_) { return null; } }).filter(Boolean);
+// Список/поиск ограничены последними записями: payload — до нескольких МБ на
+// скан, полная выгрузка таблицы в память приводит к OOM и сталлам event loop.
+const LIST_SCAN_LIMIT = 500;
+
+function scanSummary(row) {
+    return {
+        scanId: row.id,
+        linkId: row.link_id,
+        adminUser: row.admin_user,
+        adminDisplayName: row.admin_display_name,
+        timestamp: Number(row.timestamp),
+        hardware: { hwid: row.hwid, hostname: row.hostname, username: row.username },
+        steam: { accounts: String(row.steam_ids || '').split(',').filter(Boolean).map(steamId => ({ steamId })) }
+    };
 }
 
-async function searchScanRecords(q) {
+async function getScanSummary(id) {
+    const row = await sql.get('SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids FROM scans WHERE id = ?', [String(id)]);
+    return row ? scanSummary(row) : null;
+}
+
+async function listScanSummaries(limit) {
+    const lim = Math.min(Math.max(1, Number(limit) || LIST_SCAN_LIMIT), 2000);
+    const rows = await sql.all('SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids FROM scans ORDER BY "timestamp" DESC LIMIT ?', [lim]);
+    return rows.map(scanSummary);
+}
+
+async function searchScanSummaries(q, limit) {
     q = String(q || '').trim();
-    if (!q) return listScanRecords();
+    if (!q) return listScanSummaries(limit);
+    const lim = Math.min(Math.max(1, Number(limit) || LIST_SCAN_LIMIT), 2000);
     const like = '%' + q.replace(/[%_]/g, c => '\\' + c) + '%';
     const rows = await sql.all(`
-        SELECT payload FROM scans
+        SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids
+        FROM scans
         WHERE hwid LIKE ? ESCAPE '\\'
-           OR hostname LIKE ? ESCAPE '\\'
-           OR username LIKE ? ESCAPE '\\'
-           OR steam_ids LIKE ? ESCAPE '\\'
-           OR steam_names LIKE ? ESCAPE '\\'
-           OR admin_user LIKE ? ESCAPE '\\'
-           OR admin_display_name LIKE ? ESCAPE '\\'
+           OR hostname LIKE ? ESCAPE '\'
+           OR username LIKE ? ESCAPE '\'
+           OR steam_ids LIKE ? ESCAPE '\'
+           OR steam_names LIKE ? ESCAPE '\'
+           OR admin_user LIKE ? ESCAPE '\'
+           OR admin_display_name LIKE ? ESCAPE '\'
         ORDER BY "timestamp" DESC
-    `, [like, like, like, like, like, like, like]);
-    return rows.map(r => { try { return JSON.parse(r.payload); } catch (_) { return null; } }).filter(Boolean);
+        LIMIT ?
+    `, [like, like, like, like, like, like, like, lim]);
+    return rows.map(scanSummary);
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
@@ -345,7 +372,10 @@ async function seedAdmin() {
 
 module.exports = {
     initSchema,
-    saveScanRecord, getScanRecord, listScanRecords, searchScanRecords, countScanRecords,
+    saveScanRecord, getScanRecord, listScanRecords,     searchScanRecords,
+    getScanSummary,
+    listScanSummaries,
+    searchScanSummaries, countScanRecords,
     getSetting, setSetting,
     getUserById, getUserByUsername, createUser, checkCredentials, hashPassword,
     listUsers, updateUser, setUserPassword, deleteUser, countUsers,

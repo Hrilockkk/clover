@@ -192,12 +192,18 @@ async function getRecord(id) {
     return db.getScanRecord(id);
 }
 
+async function getRecordSummary(id) {
+    const rec = await db.getScanSummary(id);
+    if (!rec) return null;
+    return rec;
+}
+
 async function listRecords() {
-    return db.listScanRecords();
+    return db.listScanSummaries();
 }
 
 async function searchRecords(q) {
-    return db.searchScanRecords(q);
+    return db.searchScanSummaries(q);
 }
 
 // ─── clover.exe embedding ──────────────────────────────────────────────────
