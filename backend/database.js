@@ -372,7 +372,7 @@ async function seedAdmin() {
 
 module.exports = {
     initSchema,
-    saveScanRecord, getScanRecord, listScanRecords,     searchScanRecords,
+    saveScanRecord, getScanRecord,
     getScanSummary,
     listScanSummaries,
     searchScanSummaries, countScanRecords,
