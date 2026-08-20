@@ -121,8 +121,14 @@
                     <p id="manualUploadStatus" class="text-xs mt-2"></p>
                 </div>
 
+                <div id="scanStats" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+                    <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">Всего</div><div id="statTotal" class="stat-num mt-2">—</div></div>
+                    <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">За 24 часа</div><div id="stat24h" class="stat-num mt-2 text-emerald-300">—</div></div>
+                    <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">С находками</div><div id="statFlagged" class="stat-num mt-2 text-rose-300">—</div></div>
+                    <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">Чистые</div><div id="statClean" class="stat-num mt-2 text-lime-300">—</div></div>
+                </div>
                 <div class="panel">
-                    <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between">
+                    <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between gap-3 flex-wrap">
                         <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
                             <i class="ph ph-clipboard-text text-emerald-300"></i>
                             Результаты
@@ -243,7 +249,7 @@
                 const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
                 btn.classList.toggle('active', t === tab);
             });
-            if (tab === 'scans') loadScans();
+            if (tab === 'scans') { loadScans(); loadScanStats(); }
         }
 
         // ─── Init ──────────────────────────────────────────────
@@ -428,6 +434,17 @@
         }
 
         // ─── Scans ─────────────────────────────────────────────
+        async function loadScanStats() {
+            const res = await fetch('/api/scans/stats', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const s = data.stats || {};
+            document.getElementById('statTotal').textContent = s.total ?? '0';
+            document.getElementById('stat24h').textContent = s.last24h ?? '0';
+            document.getElementById('statFlagged').textContent = s.flagged ?? '0';
+            document.getElementById('statClean').textContent = s.clean ?? '0';
+        }
+
         async function loadScans() {
             const res = await fetch('/api/scans/list', { headers: authHeaders() });
             if (!res.ok) return;
@@ -435,7 +452,7 @@
             const body = document.getElementById('scansBody');
             if (!data.scans || data.scans.length === 0) { body.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="ph ph-clipboard-text"></i>Пока нет ни одного скана — они появятся после проверок игроков</div></td></tr>'; return; }
             body.innerHTML = data.scans.map(s => {
-                const hits = hitCount(s);
+                const hits = Number.isFinite(Number(s.hitCount)) ? Number(s.hitCount) : hitCount(s);
                 const hostname = s.hardware?.hostname || '-';
                 const hwid = s.hardware?.hwid ? s.hardware.hwid.slice(0,8) + '…' : '-';
                 const steamIds = (s.steam?.accounts || []).map(a => a.steamId).join(', ') || '-';

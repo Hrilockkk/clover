@@ -189,8 +189,15 @@ async function getScanSummary(id) {
 
 async function listScanSummaries(limit) {
     const lim = Math.min(Math.max(1, Number(limit) || LIST_SCAN_LIMIT), 2000);
-    const rows = await sql.all('SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids FROM scans ORDER BY "timestamp" DESC LIMIT ?', [lim]);
-    return rows.map(scanSummary);
+    const rows = await sql.all('SELECT id, link_id, admin_user, admin_display_name, "timestamp", hwid, hostname, username, steam_ids, payload FROM scans ORDER BY "timestamp" DESC LIMIT ?', [lim]);
+    return rows.map(row => {
+        const summary = scanSummary(row);
+        try {
+            const rec = JSON.parse(row.payload || '{}');
+            summary.hitCount = (rec.results?.length || 0) + (rec.deletedFiles?.length || 0) + (rec.dirs?.length || 0) + (rec.namedFiles?.length || 0) + (rec.cs2Conns?.length || 0) + (rec.cs2Rwx?.length || 0);
+        } catch (_) { summary.hitCount = 0; }
+        return summary;
+    });
 }
 
 async function searchScanSummaries(q, limit) {

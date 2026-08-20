@@ -164,6 +164,12 @@ module.exports = function createScansHandler(deps) {
             sendJson(res, 200, { scans: await scans.listRecords() });
             return true;
         }
+        if (parsedUrl.pathname === '/api/scans/stats' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            sendJson(res, 200, { stats: await scans.getStats() });
+            return true;
+        }
         if (parsedUrl.pathname === '/api/scans/search' && req.method === 'GET') {
             const session = await requireScanAccess(req, res);
             if (!session) return true;

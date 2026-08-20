@@ -200,6 +200,17 @@ async function searchRecords(q) {
     return db.searchScanSummaries(q);
 }
 
+async function getStats() {
+    const scans = await db.listScanSummaries(2000);
+    const now = Date.now();
+    return {
+        total: scans.length,
+        flagged: scans.filter(s => (s.hitCount || 0) > 0).length,
+        clean: scans.filter(s => !(s.hitCount || 0)).length,
+        last24h: scans.filter(s => now - Number(s.timestamp || 0) <= 24 * 60 * 60 * 1000).length
+    };
+}
+
 // ─── clover.exe embedding ──────────────────────────────────────────────────
 
 function encryptConfig(plain) {
@@ -385,6 +396,7 @@ module.exports = {
     getRecord,
     listRecords,
     searchRecords,
+    getStats,
     buildEmbeddedScanner,
     getSignatures,
     setSignatures,
