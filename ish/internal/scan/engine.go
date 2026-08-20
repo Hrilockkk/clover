@@ -716,7 +716,7 @@ func (e *Engine) ScanTargetsMFT(resolver *ntfs.PathResolver) (dirs []models.DirI
 }
 
 // EnqueueCandidate validates a path and sends it downstream if it matches a rule.
-func (e *Engine) EnqueueCandidate(path string, pathChan chan<- models.FileCandidate) {
+func (e *Engine) EnqueueCandidate(ctx context.Context, path string, pathChan chan<- models.FileCandidate) {
 	atomic.AddInt64(&e.scannedFiles, 1)
 
 	name := filepath.Base(path)
@@ -753,13 +753,16 @@ func (e *Engine) EnqueueCandidate(path string, pathChan chan<- models.FileCandid
 		}
 	}
 
-	pathChan <- models.FileCandidate{
+	select {
+	case pathChan <- models.FileCandidate{
 		Path: displayPath,
 		Name: displayName,
 		Size: size,
 		Mod:  info.ModTime(),
+	}:
+		atomic.AddInt64(&e.totalQueued, 1)
+	case <-ctx.Done():
 	}
-	atomic.AddInt64(&e.totalQueued, 1)
 }
 
 // Walker discovers candidates and feeds them to pathChan.
@@ -917,7 +920,7 @@ func (e *Engine) Walker(ctx context.Context, drives []string, pathChan chan<- mo
 				return
 			default:
 			}
-			e.EnqueueCandidate(path, pathChan)
+			e.EnqueueCandidate(ctx, path, pathChan)
 			if e.cfg.EnqueueBatchSize > 0 && e.cfg.EnqueuePauseMs > 0 && (i+1)%e.cfg.EnqueueBatchSize == 0 {
 				time.Sleep(time.Duration(e.cfg.EnqueuePauseMs) * time.Millisecond)
 			}

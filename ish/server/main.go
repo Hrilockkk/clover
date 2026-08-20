@@ -93,6 +93,14 @@ type ScanRecord struct {
 	Amcache      []models.AmcacheFinding  `json:"amcache"`
 	CS2Conns     []models.CS2Connection   `json:"cs2Conns"`
 	CS2RWX       []models.CS2RWXRegion    `json:"cs2Rwx"`
+	Prefetch     []models.PrefetchEntry   `json:"prefetch"`
+	Shimcache    []models.ShimcacheEntry  `json:"shimcache"`
+	Bam          []models.BamEntry        `json:"bam"`
+	Processes    []models.ProcessEntry    `json:"processes"`
+	Drivers      []models.DriverEntry     `json:"drivers"`
+	ShellbagsAll []models.ShellbagEntry   `json:"shellbagsAll"`
+	Services     []models.ServiceEntry    `json:"services"`
+	Cleanup      *models.CleanupInfo      `json:"cleanup,omitempty"`
 	Elapsed      float64                  `json:"elapsedSeconds"`
 }
 
@@ -117,6 +125,18 @@ var (
 func initStorage() {
 	os.MkdirAll(linksDir, 0755)
 	os.MkdirAll(scansDir, 0755)
+}
+
+func isSafeID(id string) bool {
+	if len(id) < 16 || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func linkPath(id string) string {
@@ -533,16 +553,21 @@ func handleScanUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/api/scan/")
+	id := strings.TrimPrefix(r.URL.Path, "/api/scans/upload/")
+	if id == r.URL.Path {
+		id = strings.TrimPrefix(r.URL.Path, "/api/scan/")
+	}
 	id = strings.TrimSuffix(id, "/")
 
+	const maxUploadBytes = 8 * 1024 * 1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(body) > 50*1024*1024 {
-		http.Error(w, "body too large", http.StatusBadRequest)
+		if err.Error() == "http: request body too large" {
+			http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -563,15 +588,17 @@ func handleScanUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find link to get admin info
-	if id != "" {
-		rec.LinkID = id
-		if link, err := loadLink(id); err == nil {
-			if rec.AdminUser == "" {
-				rec.AdminUser = link.AdminUser
-			}
-		}
+	if !isSafeID(id) {
+		http.Error(w, "invalid scan link", http.StatusBadRequest)
+		return
 	}
+	link, err := loadLink(id)
+	if err != nil {
+		http.Error(w, "scan link not found", http.StatusNotFound)
+		return
+	}
+	rec.LinkID = id
+	rec.AdminUser = link.AdminUser
 
 	if rec.ScanID == "" {
 		rec.ScanID = genID()
@@ -749,7 +776,8 @@ func main() {
 	mux.HandleFunc("/login", withSetup(handleLogin))
 	mux.HandleFunc("/logout", withSetup(handleLogout))
 	mux.HandleFunc("/s/", withSetup(handleScanPage))       // player scan page
-	mux.HandleFunc("/api/scan", withSetup(handleScanUpload)) // scanner upload
+	mux.HandleFunc("/api/scans/upload/", withSetup(handleScanUpload)) // scanner upload
+	mux.HandleFunc("/api/scan", withSetup(handleScanUpload)) // legacy scanner upload
 	mux.HandleFunc("/api/scan/", withSetup(handleScanUpload))
 	mux.HandleFunc("/dl/", withSetup(handleDownload)) // customized scanner download
 

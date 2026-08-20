@@ -69,7 +69,7 @@ func TestEngineEnqueuesSelf(t *testing.T) {
 	}
 	eng := New(cfg, `C:\self.exe`, "self.exe")
 	ch := make(chan models.FileCandidate, 1)
-	eng.EnqueueCandidate(`C:\self.exe`, ch)
+	eng.EnqueueCandidate(context.Background(), `C:\self.exe`, ch)
 	select {
 	case <-ch:
 		t.Fatal("self exe should not be enqueued")

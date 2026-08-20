@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 )
 
 func pageHead(title string) string {
+	title = html.EscapeString(title)
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
