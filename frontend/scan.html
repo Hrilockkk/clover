@@ -104,6 +104,7 @@
             { id: 'prefetch',  label: 'Prefetch',    icon: 'ph-rocket-launch' },
             { id: 'shimcache', label: 'ShimCache',   icon: 'ph-database' },
             { id: 'bam',       label: 'BAM',         icon: 'ph-user-switch' },
+            { id: 'usn',       label: 'USN',         icon: 'ph-list-magnifying-glass' },
             { id: 'processes', label: 'Процессы',    icon: 'ph-gear-six' },
             { id: 'drivers',   label: 'Драйверы',    icon: 'ph-cpu' },
             { id: 'cleanup',   label: 'Очистка',     icon: 'ph-broom' },
@@ -113,11 +114,11 @@
         function hitCount(rec) {
             const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
             const c = rec.cleanup || {};
-            const cleanupHits = (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).filter(j => j.wiped).length;
+            const cleanupHits = (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.prefetchTools || []).length + (c.journals || []).filter(j => j.wiped).length;
             return (rec.results?.length || 0) + (rec.deletedFiles?.length || 0) + (rec.cs2Conns?.length || 0) + (rec.cs2Rwx?.length || 0)
                 + (rec.dirs?.length || 0) + (rec.namedFiles?.length || 0)
                 + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
-                + flagged(rec.shellbagsAll) + cleanupHits;
+                + flagged(rec.shellbagsAll) + (rec.usn || []).filter(x => x.m).length + cleanupHits;
         }
 
         function tabCount(id, rec) {
@@ -133,9 +134,10 @@
                 case 'prefetch': return (rec.prefetch || []).length;
                 case 'shimcache': return (rec.shimcache || []).length;
                 case 'bam': return (rec.bam || []).length;
+                case 'usn': return (rec.usn || []).length;
                 case 'processes': return (rec.processes || []).length;
                 case 'drivers': return (rec.drivers || []).length;
-                case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.journals || []).length + (rec.deletedFiles || []).length + (rec.deletedDirs || []).length; }
+                case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.prefetchTools || []).length + (c.journals || []).length + (rec.deletedFiles || []).length + (rec.deletedDirs || []).length; }
                 case 'services': return (rec.services || []).length;
                 default: return 0;
             }
@@ -328,6 +330,18 @@
                         colMatched
                     ], (rec.bam || []).map(b => ({ ...b, _hot: !!b.matched })), 'Нет данных BAM/DAM');
 
+                case 'usn': {
+                    const rows = (rec.usn || []).map(u => ({ ...u, _hot: !!u.m }));
+                    return `<p class="text-emerald-100/40 text-xs mb-2">Журнал $UsnJrnl всех дисков (как в JournalTrace): создания, удаления, переименования и изменения файлов. Показаны самые свежие записи${rows.length ? ` (${rows.length})` : ''}. Искать можно по всему: имени, пути, событию (DELETE, CREATE, RENAME...). Совпадения с именами из «Сигнатур» подсвечены.</p>` + renderTable(id, [
+                        colDate('t', 'Время', 't'),
+                        { key: 'd', label: 'Диск', sort: 'str', cls: 'mono text-xs', val: r => r.d, html: r => esc(r.d ?? '-') },
+                        { key: 'n', label: 'Имя', sort: 'str', cls: 'path-cell', val: r => r.n, html: r => `<span class="mono text-xs">${esc(r.n ?? '-')}</span>${r.dir ? ' <span class="tag tag-muted">dir</span>' : ''}` },
+                        { key: 'p', label: 'Путь', sort: 'str', cls: 'path-cell', val: r => r.p, html: r => `<span class="mono text-xs text-emerald-100/60">${esc(r.p ?? '-')}</span>` },
+                        { key: 'r', label: 'События', sort: 'str', cls: 'whitespace-nowrap', val: r => r.r, html: r => reasonTags(r.r) },
+                        { key: 'm', label: 'Совпадение', sort: 'str', val: r => r.m, html: r => matchTag(r.m) }
+                    ], rows, 'Нет записей USN (нужны права администратора или скан старой версии)');
+                }
+
                 case 'processes':
                     return renderTable(id, [
                         { key: 'pid', label: 'PID', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.pid, html: r => esc(String(r.pid ?? '-')) },
@@ -363,6 +377,15 @@
 
         function startTypeName(v) {
             return ({ 0: 'boot', 1: 'system', 2: 'auto', 3: 'manual', 4: 'disabled' })[v] ?? ('type ' + v);
+        }
+
+        // USN reason flags: DELETE/RENAME/CREATE — самые интересные, подсвечиваем.
+        function reasonTags(r) {
+            if (!r) return '';
+            return String(r).split('|').map(t => {
+                const hot = /^(DELETE|RENAME_OLD|RENAME_NEW|CREATE)$/.test(t);
+                return `<span class="tag ${hot ? 'tag-amber' : 'tag-muted'}" style="margin-right:2px">${esc(t)}</span>`;
+            }).join('');
         }
 
         // ─── Overview / Cleanup (custom renderers) ────────────────────────
@@ -404,30 +427,42 @@
             const c = rec.cleanup || {};
             const iniDisk = c.iniOnDisk || [];
             const iniDel = c.iniDeleted || [];
+            const tools = c.prefetchTools || [];
             const journals = c.journals || [];
             const wiped = journals.filter(j => j.wiped);
 
             let banner;
-            if (!iniDisk.length && !iniDel.length && !wiped.length) {
-                banner = `<div class="panel p-4 mb-5 flex items-center gap-3"><i class="ph ph-check-circle text-emerald-400 text-xl"></i><div><div class="text-emerald-300 font-semibold">Следов очистки не найдено</div><div class="text-emerald-100/40 text-xs">shellbag_analyzer_cleaner.ini не найден ни на диске, ни в USN-журнале; журналы USN старше загрузки системы.</div></div></div>`;
+            if (!iniDisk.length && !iniDel.length && !tools.length && !wiped.length) {
+                banner = `<div class="panel p-4 mb-5 flex items-center gap-3"><i class="ph ph-check-circle text-emerald-400 text-xl"></i><div><div class="text-emerald-300 font-semibold">Следов очистки не найдено</div><div class="text-emerald-100/40 text-xs">shellbag_analyzer_cleaner.ini / PrivaZer.ini не найдены ни на диске, ни в USN-журнале; fsutil/wevtutil не запускались; журналы USN старше загрузки системы.</div></div></div>`;
             } else {
-                banner = `<div class="panel p-4 mb-5 flex items-center gap-3" style="border-color:rgba(244,63,94,.35)"><i class="ph ph-warning text-rose-400 text-xl"></i><div><div class="text-rose-300 font-semibold">Обнаружены следы очистки!</div><div class="text-emerald-100/40 text-xs">ini на диске: ${iniDisk.length} · удалённых ini в USN: ${iniDel.length} · пересозданных журналов: ${wiped.length}</div></div></div>`;
+                banner = `<div class="panel p-4 mb-5 flex items-center gap-3" style="border-color:rgba(244,63,94,.35)"><i class="ph ph-warning text-rose-400 text-xl"></i><div><div class="text-rose-300 font-semibold">Обнаружены следы очистки!</div><div class="text-emerald-100/40 text-xs">ini на диске: ${iniDisk.length} · удалённых ini в USN: ${iniDel.length} · инструментов в prefetch: ${tools.length} · пересозданных журналов: ${wiped.length}</div></div></div>`;
             }
 
             let html = banner;
-            html += `<h3 class="text-amber-400 font-bold mb-2">shellbag_analyzer_cleaner.ini на диске (${iniDisk.length})</h3>`;
+            html += `<h3 class="text-amber-400 font-bold mb-2">INI клинеров на диске — shellbag_analyzer_cleaner.ini / PrivaZer.ini (${iniDisk.length})</h3>`;
             html += renderTable('cleanup_ini', [
+                { key: 'name', label: 'Файл', sort: 'str', cls: 'mono text-xs whitespace-nowrap', val: r => r.name, html: r => esc(r.name ?? '-') },
                 colPath,
                 colDate('created', 'Создан', 'created'),
                 colDate('modified', 'Изменён', 'modified')
-            ], iniDisk.map(x => ({ ...x, _hot: true })), 'Файл не найден (поиск: %USERPROFILE%, %PUBLIC%, %ProgramData%, Windows\\Temp, глубина 5)');
+            ], iniDisk.map(x => ({ ...x, _hot: true })), 'Файлы не найдены (поиск: %USERPROFILE%, %PUBLIC%, %ProgramData%, Windows\\Temp, глубина 5)');
 
-            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Удалённые ini в USN-журнале (${iniDel.length})</h3>`;
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Удалённые ini клинеров в USN-журнале (${iniDel.length})</h3>`;
             html += renderTable('cleanup_usn', [
                 { key: 'name', label: 'Имя', sort: 'str', val: r => r.name, html: r => esc(r.name ?? '-') },
                 colPath,
                 colDate('deleted', 'Удалён', 'deleted')
             ], iniDel.map(x => ({ ...x, _hot: true })), 'Записей об удалении нет');
+
+            html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">Инструменты очистки в Prefetch — FSUTIL / WEVTUTIL (${tools.length})</h3>`;
+            html += `<p class="text-emerald-100/40 text-xs mb-2">fsutil usn deletejournal стирает USN-журнал, wevtutil cl чистит журналы событий. «Изменён» ≈ время последнего запуска утилиты.</p>`;
+            html += renderTable('cleanup_pftools', [
+                { key: 'name', label: 'Программа', sort: 'str', cls: 'mono text-xs whitespace-nowrap', val: r => r.name, html: r => `<span class="text-rose-300 font-semibold">${esc(r.name ?? '-')}</span>` },
+                colPath,
+                colDate('modified', 'Изменён (посл. запуск)', 'modified'),
+                colDate('created', 'Создан (первый запуск)', 'created'),
+                { key: 'size', label: 'Размер .pf', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.size || 0, html: r => esc(r.size ? Math.round(r.size / 1024) + ' KB' : '-') }
+            ], tools.map(x => ({ ...x, _hot: true })), 'FSUTIL.EXE / WEVTUTIL.EXE не запускались или скан собран старой версией сканера');
 
             html += `<h3 class="text-amber-400 font-bold mb-2 mt-5">USN-журналы по дискам (${journals.length})</h3>`;
             html += `<p class="text-emerald-100/40 text-xs mb-2">Проверка по принципу CheckDeletedUSN: если $UsnJrnl создан ПОСЛЕ загрузки системы — журнал был стёрт и пересоздан.</p>`;

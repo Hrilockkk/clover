@@ -355,11 +355,18 @@ func CollectBamDam(targetNames []string) []models.BamEntry {
 
 const maxPrefetchEntries = 512
 
-// CollectPrefetch lists Windows Prefetch .pf files. A .pf name is
-// "<PROGRAM>.EXE-<8 hex>.pf"; its mtime approximates the last program launch.
-// The .pf file format itself (compressed on Win10+) is not parsed — the
-// metadata alone already answers "was cheat X ever launched here".
-func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
+// cleanupToolPrefetchNames are the Prefetch program names of stock Windows
+// utilities that cheaters (ab)use to erase artifacts:
+//
+//	FSUTIL.EXE    — `fsutil usn deletejournal /d C:` wipes the USN journal
+//	WEVTUTIL.EXE  — `wevtutil cl <log>` clears Windows event logs
+var cleanupToolPrefetchNames = []string{"FSUTIL.EXE", "WEVTUTIL.EXE"}
+
+// listPrefetchEntries reads every .pf file in the Prefetch directory without
+// any cap. A .pf name is "<PROGRAM>.EXE-<8 hex>.pf"; its mtime approximates
+// the last program launch. The .pf file format itself (compressed on Win10+)
+// is not parsed — the metadata alone answers "was program X ever launched".
+func listPrefetchEntries() []models.PrefetchEntry {
 	root := os.Getenv("SystemRoot")
 	if root == "" {
 		root = `C:\Windows`
@@ -399,8 +406,20 @@ func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
 		if stat, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {
 			entry.Created = FiletimeToTime(windows.Filetime{LowDateTime: stat.CreationTime.LowDateTime, HighDateTime: stat.CreationTime.HighDateTime})
 		}
-		entry.Matched = matchTargetName(strings.ToLower(base), strings.ToLower(entry.Path), targetNames)
 		out = append(out, entry)
+	}
+	return out
+}
+
+// CollectPrefetch lists Windows Prefetch .pf files, flags signature matches
+// and keeps the newest maxPrefetchEntries (most recently launched first).
+func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
+	out := listPrefetchEntries()
+	if out == nil {
+		return nil
+	}
+	for i := range out {
+		out[i].Matched = matchTargetName(strings.ToLower(out[i].Name), strings.ToLower(out[i].Path), targetNames)
 	}
 
 	// Most recently launched first.
@@ -408,6 +427,24 @@ func CollectPrefetch(targetNames []string) []models.PrefetchEntry {
 	if len(out) > maxPrefetchEntries {
 		out = out[:maxPrefetchEntries]
 	}
+	return out
+}
+
+// CollectCleanupToolPrefetch returns the Prefetch traces of artifact-wiping
+// Windows tools (fsutil, wevtutil). It is separate from CollectPrefetch
+// because that one is capped — these few entries must never fall out of the
+// «Очистка» report.
+func CollectCleanupToolPrefetch() []models.PrefetchEntry {
+	var out []models.PrefetchEntry
+	for _, e := range listPrefetchEntries() {
+		for _, t := range cleanupToolPrefetchNames {
+			if strings.EqualFold(e.Name, t) {
+				out = append(out, e)
+				break
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
 	return out
 }
 
@@ -567,11 +604,31 @@ type serviceStatusProcess struct {
 	ServiceFlags            uint32
 }
 
-// ─── shellbag_analyzer_cleaner.ini on disk ──────────────────────────────────
+// ─── Cleaner artefact ini files on disk ─────────────────────────────────────
 
-// cleanerININame is the settings file dropped by shellbag_analyzer_cleaner —
-// finding it means the player ran the shellbag cleaner.
-const cleanerININame = "shellbag_analyzer_cleaner.ini"
+// cleanerArtifactNames are settings/config files dropped by known cleanup
+// tools — finding one means the player ran the corresponding cleaner:
+//
+//	shellbag_analyzer_cleaner.ini — shellbag_analyzer_cleaner
+//	PrivaZer.ini                  — PrivaZer cleaner settings
+var cleanerArtifactNames = []string{
+	"shellbag_analyzer_cleaner.ini",
+	"privazer.ini",
+}
+
+// CleanerArtifactNames returns the ini names treated as cleaner artefacts.
+func CleanerArtifactNames() []string { return cleanerArtifactNames }
+
+// IsCleanerArtifact reports whether a file name is a known cleaner artefact
+// (case-insensitive).
+func IsCleanerArtifact(name string) bool {
+	for _, n := range cleanerArtifactNames {
+		if strings.EqualFold(name, n) {
+			return true
+		}
+	}
+	return false
+}
 
 // cleanerINISearchRoots mirrors Services.ps1: shallow roots where the tool
 // usually sits, searched to a limited depth.
@@ -588,7 +645,7 @@ func cleanerINISearchRoots() []string {
 	return roots
 }
 
-// SearchCleanerINI looks for shellbag_analyzer_cleaner.ini on disk
+// SearchCleanerINI looks for cleaner artefact ini files on disk
 // (limited depth, like Services.ps1 does).
 func SearchCleanerINI() []models.CleanerIniFinding {
 	var out []models.CleanerIniFinding
@@ -617,7 +674,7 @@ func walkForCleanerINI(dir string, depth, maxDepth int, out *[]models.CleanerIni
 			walkForCleanerINI(full, depth+1, maxDepth, out, seen)
 			continue
 		}
-		if !strings.EqualFold(e.Name(), cleanerININame) {
+		if !IsCleanerArtifact(e.Name()) {
 			continue
 		}
 		key := strings.ToLower(full)
@@ -625,7 +682,7 @@ func walkForCleanerINI(dir string, depth, maxDepth int, out *[]models.CleanerIni
 			continue
 		}
 		seen[key] = true
-		f := models.CleanerIniFinding{Path: full}
+		f := models.CleanerIniFinding{Name: e.Name(), Path: full}
 		if info, err := e.Info(); err == nil {
 			f.Modified = info.ModTime()
 			if stat, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {

@@ -892,15 +892,12 @@ sequential:
 	}, nil
 }
 
-// cleanerININame: shellbag_analyzer_cleaner.ini in a deletion record proves
-// the shellbag cleaner ran (and the player tried to hide it).
-const cleanerININame = "shellbag_analyzer_cleaner.ini"
-
 // ScanDeletedViaUSN reads the USN journal for deletion records. Deleted .exe
 // entries older than windowHours are skipped (they are usually long gone from
 // the MFT slack as well); 0 disables the time filter. Additionally every
-// deletion of shellbag_analyzer_cleaner.ini is collected into cleanerIni
-// (no extension/time filter applies to it).
+// deletion of a cleaner artefact ini (shellbag_analyzer_cleaner.ini,
+// PrivaZer.ini — see winapi.IsCleanerArtifact) is collected into cleanerIni
+// (no extension/time filter applies to those).
 func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.SearchRule, targetDirNames []string, windowHours int) (foundFiles []models.FileInfo, foundDirs []models.DeletedDirInfo, cleanerIni []models.DeletedIniFinding, err error) {
 	h, err := winapi.OpenVolumeHandle(drive)
 	if err != nil {
@@ -992,7 +989,7 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 				} else {
 					// Cleaner artefact: collected regardless of extension
 					// filters and the time window.
-					if strings.EqualFold(name, cleanerININame) {
+					if winapi.IsCleanerArtifact(name) {
 						cleanerIni = append(cleanerIni, models.DeletedIniFinding{
 							Name:    name,
 							Path:    fullPath,
@@ -1070,6 +1067,206 @@ func ScanDeletedViaUSN(drive string, resolver *PathResolver, rules []models.Sear
 
 	fmt.Printf("\n[USN] %s found %d deleted .exe files, %d deleted .pf files, %d deleted dirs via USN journal (%d records scanned)\n", drive, fileCount, pfCount, dirCount, usnRecords)
 	return foundFiles, foundDirs, cleanerIni, nil
+}
+
+// ─── Full USN journal history (JournalTrace-style) ─────────────────────────
+
+const usnReasonMaskAll = 0xFFFFFFFF
+
+// usnReasonFlags maps USN_REASON_* bits to short readable tokens. The names
+// are searchable words on purpose: the admin greps the «USN» tab for things
+// like "DELETE" or "RENAME".
+var usnReasonFlags = []struct {
+	bit  uint32
+	name string
+}{
+	{0x00000001, "DATA_OVERWRITE"},
+	{0x00000002, "DATA_EXTEND"},
+	{0x00000004, "DATA_TRUNC"},
+	{0x00000010, "ADS_OVERWRITE"},
+	{0x00000020, "ADS_EXTEND"},
+	{0x00000040, "ADS_TRUNC"},
+	{0x00000100, "CREATE"},
+	{0x00000200, "DELETE"},
+	{0x00000400, "EA"},
+	{0x00000800, "SECURITY"},
+	{0x00001000, "RENAME_OLD"},
+	{0x00002000, "RENAME_NEW"},
+	{0x00004000, "INDEX"},
+	{0x00008000, "BASIC_INFO"},
+	{0x00010000, "HARD_LINK"},
+	{0x00020000, "COMPRESSION"},
+	{0x00040000, "ENCRYPTION"},
+	{0x00080000, "OBJECT_ID"},
+	{0x00100000, "REPARSE"},
+	{0x00200000, "STREAM"},
+	{0x80000000, "CLOSE"},
+}
+
+// UsnReasonString decodes a USN reason bitmask into a "|"-joined token list.
+func UsnReasonString(reason uint32) string {
+	var parts []string
+	for _, f := range usnReasonFlags {
+		if reason&f.bit != 0 {
+			parts = append(parts, f.name)
+		}
+	}
+	return strings.Join(parts, "|")
+}
+
+// usnHistEntry is the compact in-memory form of a history record: the reason
+// bitmask is decoded to a string only for the records that survive the
+// newest-first ring buffer (the journal can hold a million entries, we keep
+// only a small newest window).
+type usnHistEntry struct {
+	name    string
+	path    string
+	timeMs  int64
+	reason  uint32
+	isDir   bool
+	matched string
+}
+
+// ScanUSNHistory reads the entire USN journal of a drive (all reason flags,
+// like JournalTrace) and keeps the newest maxKeep records in chronological
+// order. Paths are resolved through the MFT node map built during the index
+// phase; records whose parent chain is gone keep the bare file name.
+// Records matching the signature name lists get Matched set.
+func ScanUSNHistory(drive string, resolver *PathResolver, targetNames []string, maxKeep int) []models.UsnEntry {
+	if maxKeep <= 0 {
+		maxKeep = 20000
+	}
+	h, err := winapi.OpenVolumeHandle(drive)
+	if err != nil {
+		return nil
+	}
+	defer windows.CloseHandle(h)
+
+	journal, err := queryUSNJournal(drive)
+	if err != nil {
+		return nil
+	}
+
+	readData := readUsnJournalDataV0{
+		StartUsn:          journal.FirstUsn,
+		ReasonMask:        usnReasonMaskAll,
+		ReturnOnlyOnClose: 0,
+		Timeout:           0,
+		BytesToWaitFor:    0,
+		UsnJournalID:      journal.UsnJournalID,
+	}
+
+	ring := make([]usnHistEntry, 0, maxKeep)
+	total := 0
+	buffer := make([]byte, 1<<20)
+	lastReport := time.Now()
+
+	for {
+		var bytesReturned uint32
+		if err := winapi.DeviceIoControl(
+			h,
+			fsctlReadUSNJournal,
+			unsafe.Pointer(&readData),
+			uint32(unsafe.Sizeof(readData)),
+			unsafe.Pointer(&buffer[0]),
+			uint32(len(buffer)),
+			&bytesReturned,
+		); err != nil {
+			fmt.Printf("[USN] %s history read stopped: %v\n", drive, err)
+			break
+		}
+		if bytesReturned <= 8 {
+			break
+		}
+
+		nextUsn := *(*int64)(unsafe.Pointer(&buffer[0]))
+		offset := uint32(8)
+		for offset+uint32(unsafe.Sizeof(usnRecordV2{})) <= bytesReturned {
+			rec := (*usnRecordV2)(unsafe.Pointer(&buffer[offset]))
+			if rec.RecordLength == 0 || offset+rec.RecordLength > bytesReturned {
+				break
+			}
+
+			// Only the v2 layout is decoded (v3 carries 128-bit FRNs; NTFS
+			// system volumes still emit v2). Foreign versions are skipped.
+			if rec.MajorVersion == 2 && rec.FileNameLength > 0 {
+				nameStart := offset + uint32(rec.FileNameOffset)
+				nameChars := int(rec.FileNameLength / 2)
+				namePtr := (*uint16)(unsafe.Pointer(&buffer[nameStart]))
+				name := windows.UTF16ToString(unsafe.Slice(namePtr, nameChars))
+
+				ts := uint64(rec.TimeStamp)
+				ft := windows.Filetime{LowDateTime: uint32(ts), HighDateTime: uint32(ts >> 32)}
+				t := winapi.FiletimeToTime(ft)
+
+				path := drive + "\\" + name
+				if resolver != nil {
+					parentPath := resolver.Resolve(rec.ParentFileReferenceNum)
+					if parentPath == drive+"\\" {
+						parentPath = drive
+					}
+					path = parentPath + "\\" + name
+				}
+
+				e := usnHistEntry{
+					name:    name,
+					path:    path,
+					timeMs:  t.UnixMilli(),
+					reason:  rec.Reason,
+					isDir:   rec.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0,
+					matched: winapi.MatchProgramName(strings.ToLower(name), strings.ToLower(path), targetNames),
+				}
+				if len(ring) < maxKeep {
+					ring = append(ring, e)
+				} else {
+					ring[total%maxKeep] = e
+				}
+				total++
+			}
+
+			offset += rec.RecordLength
+			if total%100000 == 0 && time.Since(lastReport) > 3*time.Second {
+				lastReport = time.Now()
+				fmt.Printf("\r[USN] %s history: %d records read...", drive, total)
+			}
+		}
+
+		if nextUsn <= readData.StartUsn || nextUsn >= journal.NextUsn {
+			break
+		}
+		readData.StartUsn = nextUsn
+	}
+
+	// Unwrap the ring into chronological order (oldest of the kept window
+	// first); when the ring wrapped, the oldest entry sits at total%maxKeep.
+	out := make([]models.UsnEntry, 0, len(ring))
+	emit := func(e usnHistEntry) {
+		out = append(out, models.UsnEntry{
+			Drive:   drive,
+			Name:    e.name,
+			Path:    e.path,
+			TimeMs:  e.timeMs,
+			Reason:  UsnReasonString(e.reason),
+			IsDir:   e.isDir,
+			Matched: e.matched,
+		})
+	}
+	if total <= maxKeep {
+		for _, e := range ring {
+			emit(e)
+		}
+	} else {
+		start := total % maxKeep
+		for i := start; i < len(ring); i++ {
+			emit(ring[i])
+		}
+		for i := 0; i < start; i++ {
+			emit(ring[i])
+		}
+	}
+
+	fmt.Printf("\n[USN] %s history: %d records read, kept newest %d\n", drive, total, len(out))
+	return out
 }
 
 func queryUSNJournal(drive string) (usnJournalDataV0, error) {

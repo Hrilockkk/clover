@@ -101,6 +101,7 @@ type ScanRecord struct {
 	ShellbagsAll []models.ShellbagEntry   `json:"shellbagsAll"`
 	Services     []models.ServiceEntry    `json:"services"`
 	Cleanup      *models.CleanupInfo      `json:"cleanup,omitempty"`
+	USN          []models.UsnEntry        `json:"usn,omitempty"`
 	Elapsed      float64                  `json:"elapsedSeconds"`
 }
 

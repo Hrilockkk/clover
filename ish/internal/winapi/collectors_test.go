@@ -5,6 +5,7 @@ package winapi
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,37 @@ func TestMatchTargetName(t *testing.T) {
 	for _, c := range cases {
 		if got := matchTargetName(c.name, c.path, targets); got != c.want {
 			t.Errorf("matchTargetName(%q, %q) = %q, want %q", c.name, c.path, got, c.want)
+		}
+	}
+}
+
+func TestIsCleanerArtifact(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"shellbag_analyzer_cleaner.ini", true},
+		{"SHELLBAG_ANALYZER_CLEANER.INI", true}, // case-insensitive
+		{"PrivaZer.ini", true},
+		{"privazer.ini", true},
+		{"settings.ini", false},
+		{"privazer.ini.bak", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := IsCleanerArtifact(c.name); got != c.want {
+			t.Errorf("IsCleanerArtifact(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCollectCleanupToolPrefetch_OnlyTools(t *testing.T) {
+	// Without admin rights the Prefetch dir is unreadable and the result is
+	// nil — that is fine. When readable, every returned entry must be one of
+	// the watched tool names (case-insensitive on "FSUTIL.EXE"/"WEVTUTIL.EXE").
+	for _, e := range CollectCleanupToolPrefetch() {
+		if !strings.EqualFold(e.Name, "FSUTIL.EXE") && !strings.EqualFold(e.Name, "WEVTUTIL.EXE") {
+			t.Fatalf("unexpected tool entry: %q", e.Name)
 		}
 	}
 }

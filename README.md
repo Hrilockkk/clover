@@ -165,8 +165,10 @@ npm run adduser -- <логин> <пароль> [уровень 1..5]
 4. Если авто-отправка не удалась — рядом создаётся `scan_*.enc`, его
    перетаскивают в dropzone на странице `/scan`.
 5. Админ видит результат на `/scans`: обзор, совпадения, удалённое, папки,
-   сеть, amcache, shellbags, appdata, USB, prefetch, shimcache, bam,
-   процессы, драйверы. Поиск — по SteamID / HWID / нику.
+   сеть, amcache, shellbags, appdata, USB, prefetch, shimcache, bam, USN
+   (журнал $UsnJrnl как в JournalTrace — все события файлов с поиском),
+   процессы, драйверы, очистку (ini клинеров, fsutil/wevtutil, wipe USN),
+   сервисы. Поиск — по SteamID / HWID / нику.
 
 ## Сигнатуры сканера (страница «Сигнатуры»)
 

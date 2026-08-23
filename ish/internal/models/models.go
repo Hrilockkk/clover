@@ -305,8 +305,10 @@ type ServiceEntry struct {
 	StartedAt   time.Time `json:"startedAt,omitempty"` // service process start time
 }
 
-// CleanerIniFinding — shellbag_analyzer_cleaner.ini found on disk.
+// CleanerIniFinding — a cleaner artefact ini found on disk
+// (shellbag_analyzer_cleaner.ini, PrivaZer.ini, ...).
 type CleanerIniFinding struct {
+	Name     string    `json:"name"`
 	Path     string    `json:"path"`
 	Created  time.Time `json:"created,omitempty"`
 	Modified time.Time `json:"modified,omitempty"`
@@ -338,7 +340,23 @@ type USNJournalInfo struct {
 type CleanupInfo struct {
 	IniOnDisk  []CleanerIniFinding `json:"iniOnDisk,omitempty"`
 	IniDeleted []DeletedIniFinding `json:"iniDeleted,omitempty"`
-	Journals   []USNJournalInfo    `json:"journals,omitempty"`
+	// PrefetchTools — Prefetch traces of artifact-wiping Windows utilities
+	// (fsutil.exe deletes the USN journal, wevtutil.exe clears event logs).
+	PrefetchTools []PrefetchEntry  `json:"prefetchTools,omitempty"`
+	Journals      []USNJournalInfo `json:"journals,omitempty"`
+}
+
+// UsnEntry is one $UsnJrnl record for the «USN» tab — a JournalTrace-style
+// searchable listing. JSON keys are intentionally short: tens of thousands
+// of these records must fit the 8 MB upload budget.
+type UsnEntry struct {
+	Drive   string `json:"d"`
+	Name    string `json:"n"`
+	Path    string `json:"p"`
+	TimeMs  int64  `json:"t"` // event time, Unix milliseconds
+	Reason  string `json:"r"` // decoded USN_REASON_* flags, "|"-joined
+	IsDir   bool   `json:"dir,omitempty"`
+	Matched string `json:"m,omitempty"`
 }
 
 // ExtraArtifacts bundles the newer collector outputs so function signatures
@@ -347,4 +365,5 @@ type ExtraArtifacts struct {
 	ShellbagsAll []ShellbagEntry `json:"shellbagsAll,omitempty"`
 	Services     []ServiceEntry  `json:"services,omitempty"`
 	Cleanup      *CleanupInfo    `json:"cleanup,omitempty"`
+	USNHistory   []UsnEntry      `json:"usn,omitempty"`
 }

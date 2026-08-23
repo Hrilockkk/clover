@@ -37,9 +37,13 @@ Clover — подсистема проверки игрока на его ком
 5. Админ видит результат на `/scans` → клик по скану открывает полноэкранную
    страницу `/scans/<id>` (вкладки: обзор, совпадения, удалённое, папки, сеть,
    amcache, shellbags — полный листинг BagMRU со слотами и датами, appdata, USB,
-   prefetch, shimcache, bam, процессы, драйверы, «Очистка» — ini клинера на диске
-   и в USN + пересоздание $UsnJrnl после загрузки, «Сервисы» — статус критичных
-   служб) с поиском и сортировкой в каждой таблице; поиск по SteamID/HWID/нику.
+   prefetch, shimcache, bam, «USN» — живой журнал $UsnJrnl всех дисков в стиле
+   JournalTrace (все события: CREATE/DELETE/RENAME/...), с поиском по имени,
+   пути и событию и подсветкой имён из «Сигнатур», процессы, драйверы,
+   «Очистка» — ini клинеров (shellbag_analyzer_cleaner.ini, PrivaZer.ini) на
+   диске и в USN + запуски FSUTIL.EXE/WEVTUTIL.EXE из Prefetch + пересоздание
+   $UsnJrnl после загрузки, «Сервисы» — статус критичных служб) с поиском и
+   сортировкой в каждой таблице; поиск по SteamID/HWID/нику.
 
 ---
 
@@ -185,8 +189,15 @@ Clover — подсистема проверки игрока на его ком
   "shimcache":    [ { "path", "modified", "executed", "matched" } ],                 // AppCompatCache Win10/11
   "bam":          [ { "source": "bam|dam", "userSid", "path", "lastRun", "matched" } ],
   "processes":    [ { "pid", "name", "path", "matched" } ],                          // снапшот процессов
-  "drivers":      [ { "name", "imagePath", "kind": "kernel|fs", "keyModified", "flag": "blacklist|recent" } ]
-}
+  "drivers":      [ { "name", "imagePath", "kind": "kernel|fs", "keyModified", "flag": "blacklist|recent" } ],
+  "cleanup":      { "iniOnDisk": [ { "name", "path", "created", "modified" } ],      // shellbag_analyzer_cleaner.ini / PrivaZer.ini
+                    "iniDeleted": [ { "name", "path", "deleted" } ],                 // те же ini в записях USN об удалении
+                    "prefetchTools": [ { "name", "path", "size", "created", "modified" } ],  // FSUTIL.EXE / WEVTUTIL.EXE из Prefetch
+                    "journals": [ { "drive", "available", "journalId", "firstUsn", "nextUsn",
+                                    "createdAt", "bootTime", "wiped" } ] },
+  "usn":          [ { "d", "n", "p", "t", "r", "dir", "m" } ]                        // журнал $UsnJrnl (JournalTrace-стиль):
+}                                                                                    // диск/имя/путь/время(мс)/события/dir/совпадение;
+                                                                                     // последние N записей (SCANNER_USN_HISTORY_MAX, дефолт 20000)
 ```
 
 - Тело запроса: `{"encrypted": base64}` — тот же AES-256-GCM (IV‖ct‖tag).

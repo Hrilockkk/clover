@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,10 @@ type Engine struct {
 	services        []models.ServiceEntry
 	cleanerDeleted  []models.DeletedIniFinding
 	cleanup         *models.CleanupInfo
+	usnHistory      []models.UsnEntry
+	// resolvers holds the per-drive MFT node maps built during the index
+	// phase; the USN history collector reuses them for path resolution.
+	resolvers       map[string]*ntfs.PathResolver
 
 	scannedFiles    int64
 	processedFiles  int64
@@ -68,7 +73,19 @@ func New(cfg *config.Cfg, selfExePath, selfExeName string) *Engine {
 		cfg:         cfg,
 		selfExePath: selfExePath,
 		selfExeName: selfExeName,
+		resolvers:   make(map[string]*ntfs.PathResolver),
 	}
+}
+
+// setResolver stores the per-drive MFT path resolver for later reuse
+// (USN history collection runs after the main pipeline).
+func (e *Engine) setResolver(drive string, r *ntfs.PathResolver) {
+	if r == nil {
+		return
+	}
+	e.mu.Lock()
+	e.resolvers[strings.ToUpper(drive)] = r
+	e.mu.Unlock()
 }
 
 // AppendResults merges discovered items into the engine state.
@@ -139,6 +156,10 @@ func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirIn
 	if e.cleanup != nil {
 		cleanupCopy := *e.cleanup
 		extra.Cleanup = &cleanupCopy
+	}
+	if len(e.usnHistory) > 0 {
+		extra.USNHistory = make([]models.UsnEntry, len(e.usnHistory))
+		copy(extra.USNHistory, e.usnHistory)
 	}
 	return
 }
@@ -369,12 +390,15 @@ func (e *Engine) ScanServices() {
 }
 
 // ScanCleanup aggregates anti-cleanup evidence for the «Очистка» tab:
-// shellbag_analyzer_cleaner.ini on disk, its deletion records found in the
-// USN journal during the index phase, and per-drive $UsnJrnl wipe status.
+// cleaner artefact ini files on disk (shellbag_analyzer_cleaner.ini,
+// PrivaZer.ini), their deletion records found in the USN journal during the
+// index phase, Prefetch traces of artifact-wiping tools (fsutil/wevtutil)
+// and per-drive $UsnJrnl wipe status.
 func (e *Engine) ScanCleanup(drives []string) {
 	info := &models.CleanupInfo{
-		IniOnDisk: winapi.SearchCleanerINI(),
-		Journals:  ntfs.CollectUSNJournalStatus(drives),
+		IniOnDisk:     winapi.SearchCleanerINI(),
+		PrefetchTools: winapi.CollectCleanupToolPrefetch(),
+		Journals:      ntfs.CollectUSNJournalStatus(drives),
 	}
 	e.mu.Lock()
 	info.IniDeleted = append(info.IniDeleted, e.cleanerDeleted...)
@@ -387,8 +411,52 @@ func (e *Engine) ScanCleanup(drives []string) {
 			wiped++
 		}
 	}
-	fmt.Fprintf(os.Stderr, "[CLEANUP] ini on disk: %d, ini deleted (USN): %d, wiped journals: %d/%d\n",
-		len(info.IniOnDisk), len(info.IniDeleted), wiped, len(info.Journals))
+	fmt.Fprintf(os.Stderr, "[CLEANUP] ini on disk: %d, ini deleted (USN): %d, prefetch tools: %d, wiped journals: %d/%d\n",
+		len(info.IniOnDisk), len(info.IniDeleted), len(info.PrefetchTools), wiped, len(info.Journals))
+}
+
+// ScanUSNHistory collects the newest $UsnJrnl records of every drive into a
+// JournalTrace-style searchable listing for the «USN» tab. Records matching
+// the signature name lists (target dirs/files, amcache names) are flagged.
+// The global list is capped at cfg.USNHistoryMax, newest first.
+func (e *Engine) ScanUSNHistory(drives []string) {
+	maxKeep := e.cfg.USNHistoryMax
+	if maxKeep <= 0 {
+		maxKeep = 20000
+	}
+	targetNames := e.collectorTargetNames()
+	var all []models.UsnEntry
+	for _, drive := range drives {
+		drive = strings.ToUpper(drive)
+		e.mu.Lock()
+		resolver := e.resolvers[drive]
+		e.mu.Unlock()
+		if resolver == nil {
+			fmt.Fprintf(os.Stderr, "[USN] %s history skipped: no MFT resolver (index phase failed)\n", drive)
+		}
+		entries := ntfs.ScanUSNHistory(drive, resolver, targetNames, maxKeep)
+		if len(entries) > 0 {
+			all = append(all, entries...)
+		}
+	}
+	if len(all) == 0 {
+		return
+	}
+	// Newest first, global cap across drives.
+	sort.Slice(all, func(i, j int) bool { return all[i].TimeMs > all[j].TimeMs })
+	if len(all) > maxKeep {
+		all = all[:maxKeep]
+	}
+	matched := 0
+	for _, u := range all {
+		if u.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.usnHistory = all
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[USN] history kept: %d records, %d matched\n", len(all), matched)
 }
 
 // ScanAppDataRoaming scans %APPDATA%\Roaming for files whose name looks
@@ -838,6 +906,7 @@ func (e *Engine) Walker(ctx context.Context, drives []string, pathChan chan<- mo
 					deletedFiles, _ = ntfs.ScanDeletedViaRawMFT(drive, resolver, e.cfg.Rules, mftOpts)
 				}
 			}
+			e.setResolver(drive, resolver)
 
 			if len(dirs) > 0 {
 				e.AppendResults(nil, dirs, nil, nil, nil)

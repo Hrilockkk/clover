@@ -162,6 +162,7 @@ func runCLI() {
 	safeRun("drivers", engine.ScanDrivers)
 	safeRun("services", engine.ScanServices)
 	safeRun("cleanup", func() { engine.ScanCleanup(drives) })
+	safeRun("usn", func() { engine.ScanUSNHistory(drives) })
 
 	results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra := engine.Results()
 	results = dedup(results)
@@ -345,6 +346,7 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		ShellbagsAll []models.ShellbagEntry   `json:"shellbagsAll"`
 		Services     []models.ServiceEntry    `json:"services"`
 		Cleanup      *models.CleanupInfo      `json:"cleanup,omitempty"`
+		USN          []models.UsnEntry        `json:"usn,omitempty"`
 		Elapsed      float64                  `json:"elapsedSeconds"`
 	}{
 		ScanID:       id,
@@ -372,6 +374,7 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		payload.ShellbagsAll = extra.ShellbagsAll
 		payload.Services = extra.Services
 		payload.Cleanup = extra.Cleanup
+		payload.USN = extra.USNHistory
 	}
 
 	body, err := json.Marshal(payload)

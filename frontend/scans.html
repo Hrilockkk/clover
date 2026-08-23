@@ -213,10 +213,10 @@
         function hitCount(rec) {
             const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
             const c = rec.cleanup || {};
-            const cleanupHits = (c.iniOnDisk||[]).length + (c.iniDeleted||[]).length + (c.journals||[]).filter(j => j.wiped).length;
+            const cleanupHits = (c.iniOnDisk||[]).length + (c.iniDeleted||[]).length + (c.prefetchTools||[]).length + (c.journals||[]).filter(j => j.wiped).length;
             return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0)
                 + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
-                + flagged(rec.shellbagsAll) + cleanupHits;
+                + flagged(rec.shellbagsAll) + (rec.usn||[]).filter(x => x.m).length + cleanupHits;
         }
 
         function fmtTs(v) {

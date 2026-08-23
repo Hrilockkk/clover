@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"scanner/internal/models"
 	"scanner/internal/utils"
+	"scanner/internal/winapi"
 )
 
 func TestResolveDeletedPath(t *testing.T) {
@@ -182,6 +184,58 @@ func TestApplyMFTFixup_NoFixups(t *testing.T) {
 	binary.LittleEndian.PutUint16(rec[0x06:], 0x01)
 	if !applyMFTFixup(rec, 512) {
 		t.Fatal("applyMFTFixup should accept a record without fixups")
+	}
+}
+
+func TestUsnReasonString(t *testing.T) {
+	cases := []struct {
+		reason uint32
+		want   string
+	}{
+		{0x00000200, "DELETE"},
+		{0x00000100 | 0x80000000, "CREATE|CLOSE"},
+		{0x00000002 | 0x80000000, "DATA_EXTEND|CLOSE"},
+		{0x00001000, "RENAME_OLD"},
+		{0x00002000, "RENAME_NEW"},
+		{0x00000000, ""},
+	}
+	for _, c := range cases {
+		if got := UsnReasonString(c.reason); got != c.want {
+			t.Errorf("UsnReasonString(%#x) = %q, want %q", c.reason, got, c.want)
+		}
+	}
+}
+
+// TestScanUSNHistoryLive exercises the real journal of the system drive.
+// Skipped unless the test runs elevated (opening \\.\C: needs admin).
+func TestScanUSNHistoryLive(t *testing.T) {
+	drive := os.Getenv("SystemDrive")
+	if drive == "" {
+		drive = "C:"
+	}
+	h, err := winapi.OpenVolumeHandle(drive)
+	if err != nil {
+		t.Skipf("no volume access (not elevated): %v", err)
+	}
+	windows.CloseHandle(h)
+
+	entries := ScanUSNHistory(drive, nil, []string{"XONE"}, 100)
+	if len(entries) == 0 {
+		t.Fatal("expected some USN history records from a live system drive")
+	}
+	if len(entries) > 100 {
+		t.Fatalf("ring buffer overran maxKeep: %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.Drive != drive || e.Name == "" || e.Reason == "" || e.TimeMs == 0 {
+			t.Fatalf("malformed entry: %+v", e)
+		}
+	}
+	// Chronological (oldest of the kept window first).
+	for i := 1; i < len(entries); i++ {
+		if entries[i].TimeMs < entries[i-1].TimeMs {
+			t.Fatalf("entries not chronological at %d", i)
+		}
 	}
 }
 

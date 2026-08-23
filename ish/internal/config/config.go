@@ -105,6 +105,9 @@ type Cfg struct {
 	MaxDeletedContentSize int64 `json:"maxDeletedContentSize"`
 	MaxDeletedSearchSize  int64 `json:"maxDeletedSearchSize"`
 	USNWindowHours        int   `json:"usnWindowHours"`
+	// USNHistoryMax caps how many newest $UsnJrnl records are kept for the
+	// «USN» tab (per drive window and global report size).
+	USNHistoryMax int `json:"usnHistoryMax"`
 }
 
 var (
@@ -155,6 +158,7 @@ func newDefault() *Cfg {
 		MaxDeletedContentSize: envInt64("SCANNER_MAX_DELETED_CONTENT_SIZE", 64*1024*1024),
 		MaxDeletedSearchSize:  envInt64("SCANNER_MAX_DELETED_SEARCH_SIZE", 100*1024*1024),
 		USNWindowHours:        envInt("SCANNER_USN_WINDOW_HOURS", 72),
+		USNHistoryMax:         envInt("SCANNER_USN_HISTORY_MAX", 20000),
 	}
 	compileRules(c.Rules)
 	return c
