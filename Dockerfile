@@ -3,7 +3,13 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Зависимости (better-sqlite3 ставится из prebuild'ов, компилятор не нужен)
+# Инструменты сборки: если prebuild better-sqlite3 не скачается (таймаут сети),
+# node-gyp соберёт его из исходников
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
+# Зависимости
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
