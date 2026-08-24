@@ -160,13 +160,39 @@
 
         // ─── Generic searchable + sortable table ──────────────────────────
         // columns: [{key, label, sort: 'str'|'num'|'date', cls, val(row)=>raw, html(row)=>string}]
+        // В DOM выводим порциями по PAGE_SIZE — иначе вкладки с десятками
+        // тысяч строк (USN-журнал) вешают браузер на построении innerHTML.
+        const PAGE_SIZE = 500;
+
         function st(id) {
-            if (!tabState[id]) tabState[id] = { q: '', sortKey: null, dir: 1 };
+            if (!tabState[id]) tabState[id] = { q: '', sortKey: null, dir: 1, limit: PAGE_SIZE };
             return tabState[id];
         }
 
         function onTabSearch(v) {
-            st(curTab).q = v;
+            const s = st(curTab);
+            s.q = v;
+            s.limit = PAGE_SIZE; // новый поиск — снова с первой страницы
+            renderContent();
+        }
+
+        function showMore(id) {
+            st(id).limit += PAGE_SIZE;
+            renderContent();
+        }
+
+        // Фильтр по причинам (чипы DELETE/CREATE/RENAME_...) на вкладке USN
+        function toggleUsnReason(t) {
+            const s = st('usn');
+            if (!s.reasons) s.reasons = {};
+            s.reasons[t] = !s.reasons[t];
+            s.limit = PAGE_SIZE;
+            renderContent();
+        }
+        function clearUsnReasons() {
+            const s = st('usn');
+            s.reasons = {};
+            s.limit = PAGE_SIZE;
             renderContent();
         }
 
@@ -196,15 +222,19 @@
                 }
             }
             if (!data.length) return `<div class="empty-state"><i class="ph ph-ghost"></i>${esc(emptyText || 'Пусто')}</div>`;
+            const shown = data.length > s.limit ? data.slice(0, s.limit) : data;
             const arrow = k => s.sortKey === k ? `<span class="sort-arrow">${s.dir > 0 ? '▲' : '▼'}</span>` : '';
             let html = `<div class="panel"><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b border-emerald-300/15">`;
             columns.forEach(c => { html += `<th class="text-left py-2 px-3 th-sort" onclick="sortBy('${id}','${c.key}')">${esc(c.label)}${arrow(c.key)}</th>`; });
             html += `</tr></thead><tbody>`;
-            data.forEach(r => {
+            shown.forEach(r => {
                 const hot = r._hot ? ' bg-rose-500/5' : '';
                 html += `<tr class="border-b border-emerald-300/10${hot}">` + columns.map(c => `<td class="py-2 px-3 ${c.cls || ''}">${c.html(r)}</td>`).join('') + `</tr>`;
             });
-            html += `</tbody></table></div><div class="px-4 py-2 text-emerald-100/30 text-xs border-t border-emerald-300/10">${data.length} записей</div></div>`;
+            const more = data.length - shown.length;
+            const footerText = more > 0 ? `Показано ${shown.length} из ${data.length}` : `${data.length} записей`;
+            const moreBtn = more > 0 ? ` <button class="btn btn-secondary btn-sm" style="margin-left:10px" onclick="showMore('${id}')">Ещё ${Math.min(PAGE_SIZE, more)}</button>` : '';
+            html += `</tbody></table></div><div class="px-4 py-2 text-emerald-100/30 text-xs border-t border-emerald-300/10">${footerText}${moreBtn}</div></div>`;
             return html;
         }
 
@@ -331,8 +361,30 @@
                     ], (rec.bam || []).map(b => ({ ...b, _hot: !!b.matched })), 'Нет данных BAM/DAM');
 
                 case 'usn': {
-                    const rows = (rec.usn || []).map(u => ({ ...u, _hot: !!u.m }));
-                    return `<p class="text-emerald-100/40 text-xs mb-2">Журнал $UsnJrnl всех дисков (как в JournalTrace): создания, удаления, переименования и изменения файлов. Показаны самые свежие записи${rows.length ? ` (${rows.length})` : ''}. Искать можно по всему: имени, пути, событию (DELETE, CREATE, RENAME...). Совпадения с именами из «Сигнатур» подсвечены.</p>` + renderTable(id, [
+                    const s = st(id);
+                    if (!s.reasons) s.reasons = {};
+                    const all = rec.usn || [];
+                    // Частоты причин одним проходом — для чипов-фильтра.
+                    // Токены — enum сканера, белый список A-Z0-9_ отсекает мусор.
+                    const reasonCounts = {};
+                    all.forEach(u => String(u.r || '').split('|').forEach(t => {
+                        if (/^[A-Z0-9_]+$/.test(t)) reasonCounts[t] = (reasonCounts[t] || 0) + 1;
+                    }));
+                    const active = Object.keys(s.reasons).filter(t => s.reasons[t] && reasonCounts[t]);
+                    const filtered = active.length
+                        ? all.filter(u => String(u.r || '').split('|').some(t => s.reasons[t]))
+                        : all;
+                    const rows = filtered.map(u => ({ ...u, _hot: !!u.m }));
+                    let chips = '';
+                    const tokens = Object.keys(reasonCounts).sort((a, b) => reasonCounts[b] - reasonCounts[a]);
+                    if (tokens.length) {
+                        chips = `<div class="flex flex-wrap items-center gap-2 mb-3">`
+                            + tokens.map(t => `<button class="tag ${s.reasons[t] ? 'tag-amber' : 'tag-muted'}" style="cursor:pointer" onclick="toggleUsnReason('${t}')">${t} <span style="opacity:.65">${reasonCounts[t]}</span></button>`).join('')
+                            + (active.length ? `<button class="btn btn-ghost btn-sm" onclick="clearUsnReasons()"><i class="ph ph-x"></i> сбросить</button>` : '')
+                            + `</div>`;
+                    }
+                    const countTxt = all.length ? (active.length ? ` (${rows.length} из ${all.length} после фильтра)` : ` (${all.length})`) : '';
+                    return `<p class="text-emerald-100/40 text-xs mb-2">Журнал $UsnJrnl всех дисков (как в JournalTrace): создания, удаления, переименования и изменения файлов. Показаны самые свежие записи${countTxt}. Искать можно по всему: имени, пути, событию (DELETE, CREATE, RENAME...). Клик по причине ниже фильтрует таблицу. Совпадения с именами из «Сигнатур» подсвечены.</p>` + chips + renderTable(id, [
                         colDate('t', 'Время', 't'),
                         { key: 'd', label: 'Диск', sort: 'str', cls: 'mono text-xs', val: r => r.d, html: r => esc(r.d ?? '-') },
                         { key: 'n', label: 'Имя', sort: 'str', cls: 'path-cell', val: r => r.n, html: r => `<span class="mono text-xs">${esc(r.n ?? '-')}</span>${r.dir ? ' <span class="tag tag-muted">dir</span>' : ''}` },
