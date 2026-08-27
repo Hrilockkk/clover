@@ -255,6 +255,7 @@ tbody tr:hover { background: rgba(110, 231, 183, 0.04); }
     padding: 16px;
     animation: fade-in 0.14s ease;
 }
+.modal-backdrop.hidden { display: none; }
 .modal-card {
     background: var(--surface);
     border: 1px solid var(--border-strong);
