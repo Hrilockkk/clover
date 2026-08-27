@@ -1,13 +1,13 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Сигнатуры — Clover</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
 <body>
@@ -26,6 +26,7 @@
                 <a href="/signatures" class="side-item active"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
                 <p class="sidebar-section" id="adminSection" style="display:none">Управление</p>
                 <a href="/admin" id="adminLink" style="display:none" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
+                <a href="/settings" id="settingsLink" style="display:none" class="side-item"><i class="ph ph-sliders-horizontal"></i>Настройки</a>
             </nav>
             <div class="sidebar-user">
                 <span class="avatar" id="userAvatar">·</span>
@@ -193,6 +194,7 @@
     <div id="toast"></div>
 
     <script src="/js/session.js"></script>
+    <script src="/js/ui.js"></script>
     <script>
         let currentUser = {};
         let editable = false;
@@ -206,27 +208,6 @@
             amcacheExeNames: [],
             driverBlacklist: []
         };
-
-        function toast(msg, type) {
-            const el = document.createElement('div');
-            el.className = 'toast-item toast-' + (type || 'success');
-            el.textContent = msg;
-            document.getElementById('toast').appendChild(el);
-            setTimeout(() => el.remove(), 4000);
-        }
-
-        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-        function authHeaders() {
-            const u = JSON.parse(localStorage.getItem('user') || '{}');
-            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-        }
-
-        async function logout() {
-            try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch (_) {}
-            localStorage.removeItem('user');
-            window.location.href = '/auth';
-        }
 
         function fmtMB(bytes) {
             if (!bytes) return '0';
@@ -403,6 +384,7 @@
                 if (editable) {
                     document.getElementById('adminLink').style.display = '';
                     document.getElementById('adminSection').style.display = '';
+                    document.getElementById('settingsLink').style.display = '';
                 }
                 await loadAll();
             } catch (e) {

@@ -1,27 +1,78 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Скан — Clover</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
     <style>
         .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
-        .th-sort:hover { color: rgba(209,250,229,.9); }
+        .th-sort:hover { color: var(--text); }
         .th-sort .sort-arrow { font-size: 10px; margin-left: 4px; opacity: .7; }
-        .tab-badge { margin-left: 4px; font-size: 10px; opacity: .75; }
+        .tab-badge { margin-left: auto; font-size: 10px; opacity: .75; flex: none; }
         td { vertical-align: top; }
         .path-cell { word-break: break-all; }
+
+        /* Каркас страницы скана: шапка + сгруппированный сайдбар вкладок */
+        .scan-shell { display: flex; flex: 1; align-items: stretch; min-height: 0; }
+        .scan-tabs {
+            width: 232px;
+            flex: none;
+            position: sticky;
+            top: 65px; /* высота шапки */
+            align-self: flex-start;
+            max-height: calc(100vh - 65px);
+            overflow-y: auto;
+            padding: 14px 10px 20px;
+            border-right: 1px solid var(--border);
+            background: var(--surface);
+            scrollbar-width: thin;
+        }
+        .scan-tabs-group { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-faint); padding: 12px 10px 5px; }
+        .scan-tabs-group:first-child { padding-top: 2px; }
+        .scan-tab {
+            display: flex; align-items: center; gap: 9px;
+            width: 100%; padding: 7px 10px;
+            border: none; background: none; cursor: pointer;
+            border-radius: var(--radius-ctl);
+            font-size: 13px; font-weight: 500; font-family: inherit;
+            color: var(--text-dim); text-align: left;
+            transition: background .13s, color .13s;
+            border-left: 3px solid transparent;
+        }
+        .scan-tab:hover { background: var(--surface-2); color: var(--text); }
+        .scan-tab.active { background: rgba(52,211,153,.10); color: var(--mint); border-left-color: var(--emerald); border-radius: 0 var(--radius-ctl) var(--radius-ctl) 0; }
+        .scan-tab i { font-size: 16px; flex: none; }
+        .scan-tab.empty { opacity: .42; }
+        .scan-tab .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        [data-theme="light"] .scan-tab.active { background: rgba(5,150,105,.10); }
+
+        .scan-main { flex: 1; min-width: 0; padding: 18px 26px 48px; }
+        .scan-main-inner { max-width: 1500px; margin: 0 auto; }
+
+        @media (max-width: 900px) {
+            .scan-shell { flex-direction: column; }
+            .scan-tabs {
+                width: 100%; position: static; max-height: none;
+                display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden;
+                padding: 8px 10px; border-right: none; border-bottom: 1px solid var(--border);
+            }
+            .scan-tabs-group { display: none; }
+            .scan-tab { width: auto; flex: none; border-left: none; border-bottom: 2px solid transparent; border-radius: 7px; }
+            .scan-tab.active { border-left: none; border-bottom-color: var(--emerald); border-radius: 7px 7px 0 0; }
+            .scan-tab .tab-badge { margin-left: 4px; }
+            .scan-main { padding: 14px 12px 40px; }
+        }
     </style>
 </head>
 <body>
     <div class="min-h-screen flex flex-col">
         <!-- Top bar -->
-        <header class="flex items-center gap-4 px-6 py-4 border-b border-emerald-300/10 sticky top-0 z-20" style="background:rgba(6,12,9,.92);backdrop-filter:blur(8px)">
+        <header class="flex items-center gap-4 px-6 py-4 border-b border-emerald-300/10 sticky top-0 z-20" style="background:var(--surface);backdrop-filter:blur(8px)">
             <a href="/scans" class="btn btn-secondary btn-sm"><i class="ph ph-arrow-left"></i> Все сканы</a>
             <div class="flex-1 min-w-0">
                 <h1 class="text-lg font-bold text-white truncate" id="headTitle">Скан</h1>
@@ -30,37 +81,28 @@
             <span id="headBadge"></span>
         </header>
 
-        <!-- Tabs -->
-        <nav id="tabsBar" class="flex flex-wrap gap-2 px-6 pt-4"></nav>
+        <div class="scan-shell">
+            <!-- Сгруппированные вкладки -->
+            <nav id="tabsBar" class="scan-tabs"></nav>
 
-        <!-- Content -->
-        <main class="flex-1 px-6 py-4 w-full max-w-[1700px] mx-auto">
-            <div id="tabSearchBar" class="mb-3 hidden">
-                <input type="text" id="tabSearch" placeholder="Поиск по таблице..." class="w-full max-w-md" oninput="onTabSearch(this.value)">
-            </div>
-            <div id="content"></div>
-        </main>
+            <!-- Content -->
+            <main class="scan-main">
+                <div class="scan-main-inner">
+                    <div id="tabSearchBar" class="mb-3 hidden">
+                        <input type="text" id="tabSearch" placeholder="Поиск по таблице..." class="w-full max-w-md" oninput="onTabSearch(this.value)">
+                    </div>
+                    <div id="content"></div>
+                </div>
+            </main>
+        </div>
     </div>
 
     <div id="toast"></div>
 
     <script src="/js/session.js"></script>
+    <script src="/js/ui.js"></script>
     <script>
         const scanId = location.pathname.split('/').filter(Boolean).pop();
-
-        function toast(msg, type) {
-            const el = document.createElement('div');
-            el.className = 'toast-item toast-' + (type || 'success');
-            el.textContent = msg;
-            document.getElementById('toast').appendChild(el);
-            setTimeout(() => el.remove(), 4000);
-        }
-
-        const esc = window.App.session.escapeHtml;
-        function authHeaders() {
-            const t = window.App.session.getSessionToken();
-            return t ? { 'Authorization': 'Bearer ' + t } : {};
-        }
 
         // Поле записи с учётом обоих вариантов регистра ключей (Go без тегов
         // маршалит "Path", с тегами — "path").
@@ -69,14 +111,6 @@
             for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
             return undefined;
         }
-
-        function fmtTs(v) {
-            if (!v) return '-';
-            const d = new Date(v);
-            if (isNaN(d) || d.getFullYear() < 2000) return '-';
-            return d.toLocaleString();
-        }
-        function fmtDate(s) { return fmtTs(s); }
 
         function cleanSerial(v) {
             const s = String(v ?? '').trim();
@@ -91,25 +125,29 @@
         let curTab = 'overview';
         const tabState = {}; // id -> {q, sortKey, dir}
 
-        // ─── Tabs definition ──────────────────────────────────────────────
+        // ─── Tabs: сгруппированы по смыслу, hint — подсказка при наведении ──
         const TABS = [
-            { id: 'overview',  label: 'Общее',       icon: 'ph-monitor' },
-            { id: 'matches',   label: 'Читы',        icon: 'ph-warning' },
-            { id: 'dirs',      label: 'Директории',  icon: 'ph-folder' },
-            { id: 'network',   label: 'Сеть',        icon: 'ph-wifi-high' },
-            { id: 'amcache',   label: 'Amcache',     icon: 'ph-clock' },
-            { id: 'shellbags', label: 'Shellbags',   icon: 'ph-briefcase' },
-            { id: 'appdata',   label: 'AppData',     icon: 'ph-hard-drives' },
-            { id: 'usb',       label: 'USB',         icon: 'ph-usb' },
-            { id: 'prefetch',  label: 'Prefetch',    icon: 'ph-rocket-launch' },
-            { id: 'shimcache', label: 'ShimCache',   icon: 'ph-database' },
-            { id: 'bam',       label: 'BAM',         icon: 'ph-user-switch' },
-            { id: 'usn',       label: 'USN',         icon: 'ph-list-magnifying-glass' },
-            { id: 'processes', label: 'Процессы',    icon: 'ph-gear-six' },
-            { id: 'drivers',   label: 'Драйверы',    icon: 'ph-cpu' },
-            { id: 'cleanup',   label: 'Очистка',     icon: 'ph-broom' },
-            { id: 'services',  label: 'Сервисы',     icon: 'ph-plug' }
+            { id: 'overview',   label: 'Общее',             icon: 'ph-monitor',               group: 'Обзор',          hint: 'Сводка, авто-вердикт, решение проверяющего, сравнение сканов' },
+            { id: 'matches',    label: 'Найденные читы',    icon: 'ph-warning',               group: 'Находки',        hint: 'Файлы, совпавшие с сигнатурами читов' },
+            { id: 'dirs',       label: 'Целевые папки',     icon: 'ph-folder',                group: 'Находки',        hint: 'Папки и файлы из списка целей (по имени)' },
+            { id: 'network',    label: 'Сеть и память CS2', icon: 'ph-wifi-high',             group: 'Находки',        hint: 'TCP-подключения и RWX-участки памяти cs2.exe' },
+            { id: 'exectraces', label: 'Запуски программ',  icon: 'ph-footprints',            group: 'Запуски',        hint: '8 независимых источников: UserAssist, RecentApps, AppSwitched, MuiCache, AppCompat, RunMRU, ComDlg32, PCA' },
+            { id: 'prefetch',   label: 'Prefetch',          icon: 'ph-rocket-launch',         group: 'Запуски',        hint: 'Кэш запусков Windows; «изменён» ≈ время последнего запуска' },
+            { id: 'shimcache',  label: 'ShimCache',         icon: 'ph-database',              group: 'Запуски',        hint: 'AppCompatCache — программы, которые видел shim создания процессов' },
+            { id: 'bam',        label: 'BAM / DAM',         icon: 'ph-user-switch',           group: 'Запуски',        hint: 'Запуски с точным временем по пользователям' },
+            { id: 'amcache',    label: 'Amcache',           icon: 'ph-clock',                 group: 'Запуски',        hint: 'Amcache.hve — следы исполняемых файлов' },
+            { id: 'timeline',   label: 'Таймлайн',          icon: 'ph-clock-countdown',       group: 'Запуски',        hint: 'Единая хронология всех артефактов — видно рассинхрон от чистки' },
+            { id: 'usn',        label: 'USN-журнал',        icon: 'ph-list-magnifying-glass', group: 'Файлы и папки',  hint: 'Журнал $UsnJrnl: создания, удаления, переименования на всех дисках' },
+            { id: 'shellbags',  label: 'Shellbags',         icon: 'ph-briefcase',             group: 'Файлы и папки',  hint: 'Папки, которые пользователь открывал в проводнике (включая удалённые)' },
+            { id: 'appdata',    label: 'AppData',           icon: 'ph-hard-drives',           group: 'Файлы и папки',  hint: 'Подозрительные файлы в AppData\\Roaming' },
+            { id: 'usb',        label: 'USB-устройства',    icon: 'ph-usb',                   group: 'Файлы и папки',  hint: 'История подключённых USB-носителей' },
+            { id: 'processes',  label: 'Процессы',          icon: 'ph-gear-six',              group: 'Система',        hint: 'Снапшот процессов на момент скана' },
+            { id: 'windows',    label: 'Окна',              icon: 'ph-app-window',            group: 'Система',        hint: 'Видимые окна — ловит ESP-оверлеи с названием игры' },
+            { id: 'drivers',    label: 'Драйверы',          icon: 'ph-cpu',                   group: 'Система',        hint: 'Ядерные драйверы: blacklist (BYOVD), неподписанные, недавние' },
+            { id: 'services',   label: 'Службы',            icon: 'ph-plug',                  group: 'Система',        hint: 'Критичные службы логирования — читеры их останавливают' },
+            { id: 'cleanup',    label: 'Следы чистки',      icon: 'ph-broom',                 group: 'Анализ',         hint: 'Клинеры, fsutil/wevtutil, пересоздание USN-журнала, удалённое' }
         ];
+        const TAB_GROUPS = ['Обзор', 'Находки', 'Запуски', 'Файлы и папки', 'Система', 'Анализ'];
 
         function hitCount(rec) {
             const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
@@ -118,6 +156,7 @@
             return (rec.results?.length || 0) + (rec.deletedFiles?.length || 0) + (rec.cs2Conns?.length || 0) + (rec.cs2Rwx?.length || 0)
                 + (rec.dirs?.length || 0) + (rec.namedFiles?.length || 0)
                 + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
+                + flagged(rec.execTraces) + flagged(rec.windows) + (rec.envFlags || []).length
                 + flagged(rec.shellbagsAll) + (rec.usn || []).filter(x => x.m).length + cleanupHits;
         }
 
@@ -134,8 +173,11 @@
                 case 'prefetch': return (rec.prefetch || []).length;
                 case 'shimcache': return (rec.shimcache || []).length;
                 case 'bam': return (rec.bam || []).length;
+                case 'exectraces': return (rec.execTraces || []).length;
+                case 'timeline': return timelineRows(rec).length;
                 case 'usn': return (rec.usn || []).length;
                 case 'processes': return (rec.processes || []).length;
+                case 'windows': return (rec.windows || []).length;
                 case 'drivers': return (rec.drivers || []).length;
                 case 'cleanup': { const c = rec.cleanup || {}; return (c.iniOnDisk || []).length + (c.iniDeleted || []).length + (c.prefetchTools || []).length + (c.journals || []).length + (rec.deletedFiles || []).length + (rec.deletedDirs || []).length; }
                 case 'services': return (rec.services || []).length;
@@ -144,11 +186,14 @@
         }
 
         function renderTabsBar() {
-            document.getElementById('tabsBar').innerHTML = TABS.map(t => {
-                const n = tabCount(t.id, REC);
-                const active = curTab === t.id;
-                const cls = active ? 'btn btn-primary btn-sm' : (n > 0 ? 'btn btn-secondary btn-sm' : 'btn btn-secondary btn-sm opacity-40');
-                return `<button class="${cls}" onclick="switchTab('${t.id}')"><i class="ph ${t.icon}"></i> ${esc(t.label)}${n ? `<span class="tab-badge">${n}</span>` : ''}</button>`;
+            document.getElementById('tabsBar').innerHTML = TAB_GROUPS.map(gr => {
+                const items = TABS.filter(t => t.group === gr).map(t => {
+                    const n = t.id === 'overview' ? 0 : tabCount(t.id, REC);
+                    const active = curTab === t.id;
+                    const cls = 'scan-tab' + (active ? ' active' : '') + (n === 0 ? ' empty' : '');
+                    return `<button class="${cls}" title="${esc(t.hint || '')}" onclick="switchTab('${t.id}')"><i class="ph ${t.icon}"></i><span class="lbl">${esc(t.label)}</span>${n ? `<span class="tab-badge">${n}</span>` : ''}</button>`;
+                }).join('');
+                return `<div class="scan-tabs-group">${esc(gr)}</div>${items}`;
             }).join('');
         }
 
@@ -192,6 +237,21 @@
         function clearUsnReasons() {
             const s = st('usn');
             s.reasons = {};
+            s.limit = PAGE_SIZE;
+            renderContent();
+        }
+
+        // Фильтр по источникам (UserAssist/PCA/...) на вкладке «Запуски»
+        function toggleExecSource(t) {
+            const s = st('exectraces');
+            if (!s.sources) s.sources = {};
+            s.sources[t] = !s.sources[t];
+            s.limit = PAGE_SIZE;
+            renderContent();
+        }
+        function clearExecSources() {
+            const s = st('exectraces');
+            s.sources = {};
             s.limit = PAGE_SIZE;
             renderContent();
         }
@@ -360,6 +420,52 @@
                         colMatched
                     ], (rec.bam || []).map(b => ({ ...b, _hot: !!b.matched })), 'Нет данных BAM/DAM');
 
+                case 'exectraces': {
+                    const srcNames = { userassist: 'UserAssist', recentapps: 'RecentApps', appswitched: 'AppSwitched', muicache: 'MuiCache', appcompatstore: 'AppCompat Store', runmru: 'RunMRU', comdlg32: 'ComDlg32', pca: 'PCA' };
+                    const s = st(id);
+                    if (!s.sources) s.sources = {};
+                    const all = rec.execTraces || [];
+                    const srcCounts = {};
+                    all.forEach(r => { const k = r.source || '?'; srcCounts[k] = (srcCounts[k] || 0) + 1; });
+                    const active = Object.keys(s.sources).filter(k => s.sources[k] && srcCounts[k]);
+                    const rows = (active.length ? all.filter(r => s.sources[r.source]) : all).map(r => ({ ...r, _hot: !!r.matched }));
+                    let chips = '';
+                    const keys = Object.keys(srcCounts).sort((a, b) => srcCounts[b] - srcCounts[a]);
+                    if (keys.length) {
+                        chips = `<div class="flex flex-wrap items-center gap-2 mb-3">`
+                            + keys.map(k => `<button class="tag ${s.sources[k] ? 'tag-amber' : 'tag-muted'}" style="cursor:pointer" onclick="toggleExecSource('${k}')">${esc(srcNames[k] || k)} <span style="opacity:.65">${srcCounts[k]}</span></button>`).join('')
+                            + (active.length ? `<button class="btn btn-ghost btn-sm" onclick="clearExecSources()"><i class="ph ph-x"></i> сбросить</button>` : '')
+                            + `</div>`;
+                    }
+                    return `<p class="text-emerald-100/40 text-xs mb-2">Артефакты запуска программ из 8 независимых источников Windows (UserAssist, RecentApps, AppSwitched, MuiCache, AppCompat Store, RunMRU, ComDlg32, PCA). Удаление одного источника (например Prefetch) не стирает остальные — рассинхрон между ними и есть след чистки. Клик по источнику фильтрует таблицу.</p>` + chips + renderTable(id, [
+                        { key: 'src', label: 'Источник', sort: 'str', val: r => r.source, html: r => `<span class="tag tag-muted">${esc(srcNames[r.source] || r.source)}</span>` },
+                        { key: 'name', label: 'Программа', sort: 'str', cls: 'mono text-xs', val: r => r.name, html: r => `<span class="whitespace-nowrap">${esc(r.name ?? '-')}</span>` },
+                        { key: 'path', label: 'Путь', sort: 'str', cls: 'path-cell', val: r => r.path, html: r => `<span class="mono text-xs text-emerald-100/60">${esc(r.path ?? '-')}</span>` },
+                        { key: 'count', label: 'Запусков', sort: 'num', cls: 'mono text-xs text-emerald-100/40', val: r => r.count || 0, html: r => esc(r.count ? String(r.count) : '-') },
+                        colDate('lastrun', 'Последний запуск', 'lastRun'),
+                        { key: 'extra', label: 'Доп.', sort: 'str', cls: 'text-xs text-emerald-100/40', val: r => r.extra, html: r => esc(r.extra ?? '-') },
+                        colMatched
+                    ], rows, 'Нет артефактов запуска (скан старой версии)');
+                }
+
+                case 'windows':
+                    return '<p class="text-emerald-100/40 text-xs mb-2">Видимые окна на момент сканирования — ESP-оверлеи часто выглядят как безрамочные окна с названием игры</p>' + renderTable(id, [
+                        { key: 'title', label: 'Заголовок', sort: 'str', val: r => r.title, html: r => esc(r.title ?? '-') },
+                        { key: 'proc', label: 'Процесс', sort: 'str', cls: 'mono text-xs', val: r => r.process, html: r => esc(r.process ?? '-') },
+                        { key: 'path', label: 'Путь', sort: 'str', cls: 'path-cell', val: r => r.path, html: r => `<span class="mono text-xs text-emerald-100/60">${esc(r.path ?? '-')}</span>` },
+                        colMatched
+                    ], (rec.windows || []).map(w => ({ ...w, _hot: !!w.matched })), 'Нет данных об окнах (скан старой версии)');
+
+                case 'timeline': {
+                    const rows = timelineRows(rec);
+                    return '<p class="text-emerald-100/40 text-xs mb-2">Единая хронология всех артефактов: запуски программ, удаления файлов, события USN. Рассинхрон (файл удалён, а запуска нигде нет) — след чистки.</p>' + renderTable(id, [
+                        { key: 't', label: 'Время', sort: 'date', cls: 'whitespace-nowrap text-emerald-100/40 text-xs', val: r => r._t, html: r => esc(fmtTs(r._t)) },
+                        { key: 'src', label: 'Источник', sort: 'str', val: r => r._src, html: r => `<span class="tag tag-muted">${esc(r._src)}</span>` },
+                        { key: 'what', label: 'Событие', sort: 'str', cls: 'text-xs', val: r => r._what, html: r => esc(r._what) },
+                        { key: 'path', label: 'Объект', sort: 'str', cls: 'path-cell', val: r => r._path, html: r => `<span class="mono text-xs ${r._hot ? 'text-rose-300' : 'text-emerald-100/60'}">${esc(r._path || '-')}</span>` }
+                    ], rows, 'Нет событий со временем (скан старой версии)');
+                }
+
                 case 'usn': {
                     const s = st(id);
                     if (!s.reasons) s.reasons = {};
@@ -440,9 +546,88 @@
             }).join('');
         }
 
+        // ─── Timeline: единая лента времени из всех артефактов ────────────
+        // Собирает события с известным временем из USN + Prefetch + ShimCache
+        // + BAM + артефактов запуска в одну хронологию (новые сверху):
+        // «в 19:03 запущен X, в 19:05 удалён Y» — рассинхрон виден сразу.
+        function timelineRows(rec) {
+            const rows = [];
+            const push = (time, source, what, path, hot) => {
+                const t = new Date(time || 0).getTime() || 0;
+                if (t < 946684800000) return; // до 2000 — мусор/ноль
+                rows.push({ _t: time, _src: source, _what: what, _path: path || '', _hot: !!hot });
+            };
+            (rec.usn || []).forEach(u => push(u.t ? Number(u.t) : 0, 'USN', (u.dir ? 'папка ' : '') + (u.r || ''), (u.p || '') + (u.p && !String(u.p).endsWith(u.n) ? '\\' + (u.n || '') : (u.n || '')), u.m));
+            (rec.prefetch || []).forEach(p => push(p.modified, 'Prefetch', 'запуск', p.name, p.matched));
+            (rec.shimcache || []).forEach(s => push(s.modified, 'ShimCache', s.executed ? 'запуск' : 'замечен', s.path, s.matched));
+            (rec.bam || []).forEach(b => push(b.lastRun, 'BAM/' + (b.source || ''), 'запуск', b.path, b.matched));
+            (rec.execTraces || []).forEach(e => push(e.lastRun, e.source, 'запуск' + (e.count ? ' ×' + e.count : ''), e.path || e.name, e.matched));
+            (rec.deletedFiles || []).forEach(f => push(f.Deleted || f.deleted, 'Удалён', 'удаление', f.Path || f.path, true));
+            rows.sort((a, b) => new Date(b._t) - new Date(a._t));
+            return rows;
+        }
+
         // ─── Overview / Cleanup (custom renderers) ────────────────────────
         function renderOverview(rec) {
             let html = `<div class="mb-4 text-sm text-emerald-100/50">Проверил: <span class="mono text-amber-400">${esc(rec.adminDisplayName || rec.adminUser || '-')}</span> · ${fmtDate(rec.timestamp)} · длительность ${Number(rec.elapsedSeconds || 0).toFixed(1)}с</div>`;
+            // Авто-вердикт (эвристический скоринг, считается на сервере при загрузке)
+            if (rec.verdict && rec.verdict.level) {
+                const v = rec.verdict;
+                const vmap = { clean: ['tag-green', 'Чисто', 'ph-check-circle', 'border-emerald-500/50'], suspicious: ['tag-amber', 'Подозрительно', 'ph-warning', 'border-amber-500/50'], flagged: ['tag-red', 'Находки', 'ph-warning-octagon', 'border-rose-500/60'] };
+                const [cls, txt, icon, border] = vmap[v.level] || vmap.suspicious;
+                html += `<div class="panel p-5 mb-5 border-l-4 ${border}">
+                    <div class="flex items-center gap-3 mb-2 flex-wrap">
+                        <i class="ph ${icon} text-xl" style="color:var(--emerald)"></i>
+                        <span class="text-white font-bold">Авто-вердикт:</span>
+                        <span class="tag ${cls}">${txt}</span>
+                        <span class="mono text-emerald-100/50 text-xs">score ${v.score}</span>
+                        <button class="btn btn-secondary btn-sm ml-auto" id="aiBtn" onclick="runAi()"><i class="ph ph-robot"></i> AI-анализ</button>
+                    </div>
+                    ${(v.reasons || []).length ? '<ul class="text-sm text-emerald-100/60 space-y-1">' + v.reasons.map(r => `<li>· ${esc(r.reason)} <span class="text-emerald-100/30 text-xs">+${r.points}</span></li>`).join('') + '</ul>' : '<p class="text-emerald-100/40 text-sm">Подозрительного не найдено.</p>'}
+                    <div id="aiVerdictBox"></div>
+                </div>`;
+            }
+            // Результат прежнего AI-анализа (если уже делали)
+            if (rec.aiVerdict) {
+                const a = rec.aiVerdict;
+                const amap = { clean: 'tag-green', suspicious: 'tag-amber', flagged: 'tag-red' };
+                html += `<div class="panel p-5 mb-5"><h3 class="text-white font-bold mb-2 flex items-center gap-2"><i class="ph ph-robot text-emerald-300"></i>AI-анализ <span class="tag ${amap[a.level] || 'tag-amber'}">${esc(a.level)}</span><span class="mono text-xs text-emerald-100/40">${a.confidence}% · ${esc(a.model || '')}</span></h3>
+                    <p class="text-sm text-emerald-100/70 mb-2">${esc(a.summary)}</p>
+                    ${(a.findings || []).length ? '<ul class="text-sm text-emerald-100/50 space-y-1 mb-2">' + a.findings.map(f => '<li>· ' + esc(f) + '</li>').join('') + '</ul>' : ''}
+                    <p class="text-xs text-amber-300/80">Рекомендация: ${esc(a.recommendation || '-')}</p></div>`;
+            }
+            // Админ-статус проверки + заметка
+            const meta = rec.adminMeta || {};
+            html += `<div class="panel p-5 mb-5">
+                <h3 class="text-white font-bold mb-3 flex items-center gap-2"><i class="ph ph-gavel text-emerald-300"></i>Решение проверяющего</h3>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <select id="adminStatus" class="w-48">
+                        <option value=""${!meta.status ? ' selected' : ''}>— без статуса —</option>
+                        <option value="review"${meta.status === 'review' ? ' selected' : ''}>На рассмотрении</option>
+                        <option value="banned"${meta.status === 'banned' ? ' selected' : ''}>Бан</option>
+                        <option value="cleared"${meta.status === 'cleared' ? ' selected' : ''}>Оправдан</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" onclick="saveMeta()"><i class="ph ph-floppy-disk"></i> Сохранить</button>
+                    ${meta.by ? `<span class="text-xs text-emerald-100/40">${esc(meta.by)} · ${fmtDate(meta.at)}</span>` : ''}
+                </div>
+                <textarea id="adminNote" rows="2" placeholder="Заметка к проверке (видна только админам)..." class="w-full mt-3">${esc(meta.note || '')}</textarea>
+            </div>`;
+            // Сравнение с другим сканом (напр. предыдущей проверкой игрока)
+            html += `<div class="panel p-5 mb-5">
+                <h3 class="text-white font-bold mb-2 flex items-center gap-2"><i class="ph ph-git-diff text-emerald-300"></i>Сравнить с другим сканом</h3>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <input type="text" id="diffInput" placeholder="ID скана или ссылка /scans/<id>" class="flex-1 min-w-[240px] mono text-xs">
+                    <button class="btn btn-secondary btn-sm" onclick="runDiff()"><i class="ph ph-git-diff"></i> Сравнить</button>
+                </div>
+                <div id="diffBox" class="mt-3"></div>
+            </div>`;
+            // Среда выполнения: сканер продолжает работу под VM/песочницей,
+            // но сигналит — запуск CS2-чекера с виртуалки сам по себе подозрителен.
+            if ((rec.envFlags || []).length) {
+                html += `<div class="panel p-4 mb-5 border-l-4 border-rose-500/60"><h3 class="text-rose-300 font-bold mb-2 flex items-center gap-2"><i class="ph ph-warning-octagon"></i>Среда выполнения подозрительна</h3><div class="flex flex-wrap gap-2">`
+                    + rec.envFlags.map(f => `<span class="tag tag-red mono">${esc(f)}</span>`).join('')
+                    + `</div><p class="text-emerald-100/40 text-xs mt-2">Признаки виртуальной машины или песочницы на ПК игрока.</p></div>`;
+            }
             const hw = rec.hardware;
             if (hw) {
                 html += `<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">`;
@@ -466,7 +651,11 @@
                     html += `<div class="panel p-5 mb-5"><h3 class="text-white font-bold mb-3 flex items-center gap-2"><i class="ph ph-steam-logo text-emerald-300"></i>Steam</h3>`;
                     html += `<p class="text-emerald-100/40 text-xs mb-2 mono">${esc(rec.steam.steamPath || '')}</p><table class="w-full text-sm"><thead><tr class="border-b border-emerald-300/15"><th class="text-left py-2">SteamID</th><th class="text-left py-2">Аккаунт</th><th class="text-left py-2">Последний</th><th class="text-left py-2">Время</th></tr></thead><tbody>`;
                     rec.steam.accounts.forEach(a => {
-                        html += `<tr class="border-b border-emerald-300/10"><td class="mono py-2">${esc(g(a, 'steamId', 'SteamID'))}</td><td>${esc(g(a, 'accountName', 'AccountName'))}</td><td>${g(a, 'mostRecent', 'MostRecent') ? '✓' : ''}</td><td class="text-emerald-100/40 text-xs">${fmtTs(g(a, 'timestamp', 'Timestamp'))}</td></tr>`;
+                        const sid = String(g(a, 'steamId', 'SteamID') || '');
+                        const badgeBtn = /^\d{10,20}$/.test(sid)
+                            ? ` <button class="btn btn-ghost btn-icon btn-sm" title="Trust Badge: публичная карточка проверки" onclick="event.stopPropagation();copyBadge('${sid}')"><i class="ph ph-seal-check"></i></button>`
+                            : '';
+                        html += `<tr class="border-b border-emerald-300/10"><td class="mono py-2">${esc(sid)}${badgeBtn}</td><td>${esc(g(a, 'accountName', 'AccountName'))}</td><td>${g(a, 'mostRecent', 'MostRecent') ? '✓' : ''}</td><td class="text-emerald-100/40 text-xs">${fmtTs(g(a, 'timestamp', 'Timestamp'))}</td></tr>`;
                     });
                     html += `</tbody></table></div>`;
                 }
@@ -556,6 +745,56 @@
             else if (curTab === 'cleanup') html = renderCleanup(REC);
             else html = tabTable(curTab, REC);
             document.getElementById('content').innerHTML = html;
+        }
+
+        // AI-анализ скана через внешний LLM (кнопка в карточке вердикта).
+        async function runAi() {
+            const btn = document.getElementById('aiBtn');
+            const box = document.getElementById('aiVerdictBox');
+            if (btn) { btn.classList.add('is-loading'); btn.disabled = true; }
+            try {
+                const res = await fetch('/api/scans/ai/' + scanId, { method: 'POST', headers: authHeaders() });
+                const data = await res.json();
+                if (!res.ok) { toast(data.message || 'AI-анализ недоступен', 'error'); return; }
+                REC.aiVerdict = data.ai;
+                const a = data.ai;
+                const amap = { clean: 'tag-green', suspicious: 'tag-amber', flagged: 'tag-red' };
+                box.innerHTML = `<div class="mt-3 pt-3 border-t border-emerald-300/10">
+                    <p class="text-sm text-white font-semibold mb-1 flex items-center gap-2"><i class="ph ph-robot text-emerald-300"></i>AI: <span class="tag ${amap[a.level] || 'tag-amber'}">${esc(a.level)}</span><span class="mono text-xs text-emerald-100/40">${a.confidence}%</span></p>
+                    <p class="text-sm text-emerald-100/70 mb-1">${esc(a.summary)}</p>
+                    ${(a.findings || []).map(f => '<p class="text-sm text-emerald-100/50">· ' + esc(f) + '</p>').join('')}
+                    <p class="text-xs text-amber-300/80 mt-1">Рекомендация: ${esc(a.recommendation || '-')}</p>
+                </div>`;
+            } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+            finally { if (btn) { btn.classList.remove('is-loading'); btn.disabled = false; } }
+        }
+
+        // Trust Badge: публичная карточка «игрок проверен» по SteamID.
+        function copyBadge(sid) {
+            const url = location.origin + '/badge/' + sid;
+            navigator.clipboard.writeText(url).then(() => toast('Ссылка на Trust Badge скопирована')).catch(() => {});
+        }
+
+        // Сравнение со старым сканом: что появилось/исчезло между проверками.
+        async function runDiff() {
+            const box = document.getElementById('diffBox');
+            const raw = document.getElementById('diffInput').value.trim();
+            const otherId = (raw.match(/[a-f0-9]{16,64}/) || [])[0];
+            if (!otherId) { toast('Введите ID скана', 'error'); return; }
+            if (otherId === scanId) { toast('Это тот же скан', 'error'); return; }
+            box.innerHTML = '<p class="text-emerald-100/40 text-xs">Считаем…</p>';
+            const res = await fetch('/api/scans/diff?a=' + otherId + '&b=' + scanId, { headers: authHeaders() });
+            if (!res.ok) { box.innerHTML = '<p class="text-rose-400 text-xs">Скан не найден</p>'; return; }
+            const data = await res.json();
+            if (!data.changes.length) { box.innerHTML = '<p class="text-emerald-300 text-xs">Изменений нет — артефакты совпадают.</p>'; return; }
+            const srcNames = { prefetch: 'Prefetch', shimcache: 'ShimCache', bam: 'BAM', execTraces: 'Запуски', processes: 'Процессы', drivers: 'Драйверы', results: 'Читы', deletedFiles: 'Удалённые' };
+            box.innerHTML = `<p class="text-xs text-emerald-100/40 mb-2">Изменений: ${data.changes.length} (относительно более раннего скана)</p>
+                <div class="max-h-72 overflow-y-auto"><table class="w-full text-sm"><tbody>` +
+                data.changes.slice(0, 300).map(c => `<tr class="border-b border-emerald-300/10">
+                    <td class="py-1.5 px-2">${c.change === 'added' ? '<span class="tag tag-red">новое</span>' : '<span class="tag tag-muted">исчезло</span>'}</td>
+                    <td class="py-1.5 px-2"><span class="tag tag-muted">${esc(srcNames[c.source] || c.source)}</span></td>
+                    <td class="py-1.5 px-2 mono text-xs text-emerald-100/60">${esc(c.path || c.name || '-')}</td>
+                </tr>`).join('') + '</tbody></table></div>';
         }
 
         async function boot() {

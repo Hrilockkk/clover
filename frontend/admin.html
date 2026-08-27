@@ -1,13 +1,13 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Пользователи — Clover</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
 <body>
@@ -26,6 +26,7 @@
                 <a href="/signatures" class="side-item"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
                 <p class="sidebar-section">Управление</p>
                 <a href="/admin" class="side-item active"><i class="ph ph-shield-star"></i>Пользователи</a>
+                <a href="/settings" class="side-item"><i class="ph ph-sliders-horizontal"></i>Настройки</a>
             </nav>
             <div class="sidebar-user">
                 <span class="avatar" id="userAvatar">·</span>
@@ -176,6 +177,7 @@
     <div id="toast"></div>
 
     <script src="/js/session.js"></script>
+    <script src="/js/ui.js"></script>
     <script>
         let currentUser = {};
         let users = [];
@@ -183,28 +185,6 @@
         let delTargetId = null;
 
         const LEVEL_NAMES = { 1: 'Мл. модер', 2: 'Модер', 3: 'СТМ/СТА', 4: 'ГА', 5: 'Супер' };
-
-        function toast(msg, type) {
-            const el = document.createElement('div');
-            el.className = 'toast-item toast-' + (type || 'success');
-            const icon = type === 'error' ? 'ph-warning-circle' : 'ph-check-circle';
-            el.innerHTML = '<i class="ph ' + icon + '"></i>' + esc(msg);
-            document.getElementById('toast').appendChild(el);
-            setTimeout(() => el.remove(), 4000);
-        }
-
-        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-        function authHeaders() {
-            const u = JSON.parse(localStorage.getItem('user') || '{}');
-            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-        }
-
-        async function logout() {
-            try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch (_) {}
-            localStorage.removeItem('user');
-            window.location.href = '/auth';
-        }
 
         function fmtDate(s) {
             if (!s) return '—';

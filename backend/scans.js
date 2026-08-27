@@ -82,7 +82,7 @@ function isLinkExpired(link) {
 
 // ─── Links ─────────────────────────────────────────────────────────────────
 
-function createLink({ note, adminUser, adminDisplayName }) {
+function createLink({ note, adminUser, adminDisplayName, eventId }) {
     ensureDirs();
     const now = Date.now();
     const password = genPassword();
@@ -95,8 +95,93 @@ function createLink({ note, adminUser, adminDisplayName }) {
         adminUser: String(adminUser || '').slice(0, 64),
         adminDisplayName: String(adminDisplayName || '').slice(0, 64)
     };
+    // Турнирный режим: ссылка привязана к событию.
+    if (eventId && /^[a-f0-9]{16}$/.test(String(eventId))) link.eventId = String(eventId);
     writeJsonSafe(linkPath(link.id), link);
     return link;
+}
+
+// createLinks — пакетное создание ссылок (проверка всей команды перед матчем).
+// count ограничен, чтобы не заспамить data/scans/links.
+const MAX_BATCH_LINKS = 50;
+
+function createLinks({ note, count, adminUser, adminDisplayName, eventId }) {
+    const n = Math.min(Math.max(1, Number(count) || 1), MAX_BATCH_LINKS);
+    const links = [];
+    for (let i = 0; i < n; i++) {
+        const linkNote = n > 1 ? String(note || '').slice(0, 190) + ' #' + (i + 1) : note;
+        links.push(createLink({ note: linkNote, adminUser, adminDisplayName, eventId }));
+    }
+    return links;
+}
+
+// ─── Турнирный режим ────────────────────────────────────────────────────────
+
+// createEventWithLinks: событие + N ссылок участникам одной операцией.
+async function createEventWithLinks({ name, count, adminUser, adminDisplayName }) {
+    const event = await db.createEvent({
+        id: genId().slice(0, 16),
+        name: String(name || 'Событие').slice(0, 200),
+        createdBy: adminUser
+    });
+    const links = createLinks({ note: name, count, adminUser, adminDisplayName, eventId: event.id });
+    return { event, links };
+}
+
+// eventStatus: живой статус «сколько участников прошло проверку».
+// pending — живые ссылки события; done — загруженные сканы (ссылка после
+// аплоада умирает, поэтому ищем их по eventId в payload скана).
+async function eventStatus(eventId) {
+    const event = await db.getEvent(eventId);
+    if (!event) return null;
+    const pendingLinks = listLinks().filter(l => l.eventId === eventId);
+    const doneScans = await db.getScansByEventId(eventId);
+    return {
+        event: { id: event.id, name: event.name, createdAt: Number(event.created_at) },
+        pending: pendingLinks.map(l => ({ linkId: l.id, note: l.note || '', expiresAt: l.expiresAt || 0 })),
+        done: doneScans.map(c => ({ scanId: c.scanId, timestamp: c.timestamp, hostname: c.hostname, verdict: c.verdict })),
+        total: pendingLinks.length + doneScans.length,
+        completed: doneScans.length
+    };
+}
+
+// ─── Watchlist: регулярные проверки ─────────────────────────────────────────
+// Список игроков, обязанных проходить проверку раз в N дней. Хранится в
+// settings (key-value), записей немного — отдельная таблица не нужна.
+const WATCHLIST_KEY = 'watchlist';
+
+async function getWatchlist() {
+    const raw = await db.getSetting(WATCHLIST_KEY, []);
+    return Array.isArray(raw) ? raw : [];
+}
+
+async function setWatchlist(list) {
+    const clean = (Array.isArray(list) ? list : []).slice(0, 200).map(w => ({
+        steamId: String(w.steamId || '').slice(0, 32),
+        name: String(w.name || '').slice(0, 64),
+        intervalDays: Math.min(Math.max(1, Number(w.intervalDays) || 7), 90)
+    })).filter(w => w.steamId);
+    await db.setSetting(WATCHLIST_KEY, clean);
+    return clean;
+}
+
+// watchlistStatus: для каждого игрока — дата последней проверки и просрочка.
+async function watchlistStatus() {
+    const list = await getWatchlist();
+    const now = Date.now();
+    const out = [];
+    for (const w of list) {
+        const last = await db.getLatestScanBySteamId(w.steamId);
+        const lastTs = last ? last.timestamp : 0;
+        const dueAt = lastTs ? lastTs + w.intervalDays * 86400000 : 0;
+        out.push({
+            ...w,
+            lastScan: last,
+            overdue: !lastTs || now > dueAt,
+            dueAt: dueAt || null
+        });
+    }
+    return out;
 }
 
 function getLink(id) {
@@ -175,16 +260,111 @@ async function migrateRecordsFromFiles() {
     }
 }
 
+// ─── Авто-вердикт (эвристический скоринг) ──────────────────────────────────
+//
+// Балльная система: находки по сигнатурам и следам чистки весят больше всего,
+// совпадения в артефактах запуска — средне, env-флаги (VM) — ниже.
+// level: clean (0) | suspicious (1–29) | flagged (30+).
+
+function computeVerdict(rec) {
+    let score = 0;
+    const reasons = [];
+    const add = (points, reason) => { score += points; reasons.push({ points, reason }); };
+
+    const len = a => (Array.isArray(a) ? a.length : 0);
+    const matched = a => (Array.isArray(a) ? a.filter(x => x && (x.matched || x.Matched)).length : 0);
+    const cap = (v, max) => Math.min(v, max);
+
+    const sigHits = len(rec.results) + len(rec.namedFiles) + len(rec.dirs);
+    if (sigHits) add(cap(sigHits * 40, 120), 'Совпадения по сигнатурам: ' + sigHits);
+    if (len(rec.deletedFiles) || len(rec.deletedDirs)) add(cap((len(rec.deletedFiles) + len(rec.deletedDirs)) * 25, 75), 'Удалённые целевые файлы: ' + (len(rec.deletedFiles) + len(rec.deletedDirs)));
+
+    const artMatched = matched(rec.prefetch) + matched(rec.shimcache) + matched(rec.bam) + matched(rec.execTraces) + matched(rec.processes);
+    if (artMatched) add(cap(artMatched * 15, 60), 'Целевые имена в артефактах запуска: ' + artMatched);
+
+    const drvBlacklist = (Array.isArray(rec.drivers) ? rec.drivers : []).filter(d => d.flag === 'blacklist').length;
+    const drvUnsigned = (Array.isArray(rec.drivers) ? rec.drivers : []).filter(d => d.flag === 'unsigned').length;
+    if (drvBlacklist) add(cap(drvBlacklist * 35, 70), 'BYOVD-драйверы из blacklist: ' + drvBlacklist);
+    if (drvUnsigned) add(cap(drvUnsigned * 20, 40), 'Неподписанные драйверы: ' + drvUnsigned);
+
+    if (len(rec.envFlags)) add(cap(len(rec.envFlags) * 20, 40), 'Среда выполнения: ' + rec.envFlags.length + ' сигнал(ов) VM/песочницы');
+
+    const c = rec.cleanup || {};
+    const cIni = len(c.iniOnDisk) + len(c.iniDeleted);
+    if (cIni) add(cap(cIni * 25, 50), 'Следы клинеров: ' + cIni);
+    if (len(c.prefetchTools)) add(cap(len(c.prefetchTools) * 15, 30), 'Запуски fsutil/wevtutil: ' + len(c.prefetchTools));
+    const wiped = (Array.isArray(c.journals) ? c.journals : []).filter(j => j.wiped).length;
+    if (wiped) add(wiped * 40, 'Пересоздание $UsnJrnl после загрузки');
+
+    if (len(rec.cs2Rwx)) add(cap(len(rec.cs2Rwx) * 10, 30), 'RWX-участки в cs2.exe: ' + len(rec.cs2Rwx));
+    if (len(rec.cs2Conns)) add(cap(len(rec.cs2Conns) * 5, 10), 'Активные соединения cs2.exe: ' + len(rec.cs2Conns));
+    if (matched(rec.windows)) add(cap(matched(rec.windows) * 15, 30), 'Подозрительные окна: ' + matched(rec.windows));
+
+    const level = score === 0 ? 'clean' : (score >= 30 ? 'flagged' : 'suspicious');
+    reasons.sort((a, b) => b.points - a.points);
+    return { score, level, reasons: reasons.slice(0, 6) };
+}
+
 async function saveRecord(rec) {
     ensureDirs();
     if (!rec.scanId) rec.scanId = genId();
     if (!rec.timestamp) rec.timestamp = Date.now();
+    // Авто-вердикт вычисляется один раз при сохранении и хранится в payload.
+    try { rec.verdict = computeVerdict(rec); } catch (e) { console.warn('[SCANS] verdict failed:', e.message); }
     await db.saveScanRecord(rec);
     // Удаляем ссылку после использования (скан загружен)
     if (rec.linkId) {
         deleteLinkFile(rec.linkId);
     }
+    // Уведомления (Telegram/Discord) — fire-and-forget, ошибки не роняют аплоад.
+    try {
+        const notify = require('./notify');
+        notify.scanReceived(rec);
+    } catch (_) {}
     return rec;
+}
+
+// setScanMeta сохраняет админ-метаданные скана (статус проверки + заметка)
+// внутрь JSON-payload записи. status: '' | 'review' | 'banned' | 'cleared'.
+async function setScanMeta(id, { status, note }, session) {
+    const rec = await db.getScanRecord(id);
+    if (!rec) return null;
+    rec.adminMeta = {
+        status: String(status || '').slice(0, 16),
+        note: String(note || '').slice(0, 2000),
+        by: session ? (session.displayName || session.username || '') : '',
+        at: Date.now()
+    };
+    await db.updateScanRecord(rec);
+    return rec.adminMeta;
+}
+
+// diffRecords сравнивает два скана одного игрока: какие записи появились и
+// какие исчезли между проверками (по ключевым коллекторам).
+function diffKey(source, item) {
+    return source + '|' + String(item.path || item.Path || item.name || item.Name || '');
+}
+
+function diffRecords(a, b) {
+    const sources = [
+        ['prefetch', r => r.name], ['shimcache', r => r.path], ['bam', r => r.path],
+        ['execTraces', r => (r.source || '') + ':' + (r.path || r.name)],
+        ['processes', r => r.path || r.name], ['drivers', r => r.name],
+        ['results', r => r.Path || r.path], ['deletedFiles', r => r.path || r.Path]
+    ];
+    const out = [];
+    for (const [src] of sources) {
+        const inA = new Map(), inB = new Map();
+        for (const item of (a[src] || [])) inA.set(diffKey(src, item), item);
+        for (const item of (b[src] || [])) inB.set(diffKey(src, item), item);
+        for (const [k, item] of inB) {
+            if (!inA.has(k)) out.push({ source: src, change: 'added', name: item.name || item.Name || '', path: item.path || item.Path || '' });
+        }
+        for (const [k, item] of inA) {
+            if (!inB.has(k)) out.push({ source: src, change: 'removed', name: item.name || item.Name || '', path: item.path || item.Path || '' });
+        }
+    }
+    return out;
 }
 
 async function getRecord(id) {
@@ -203,12 +383,28 @@ async function searchRecords(q) {
 async function getStats() {
     const scans = await db.listScanSummaries(2000);
     const now = Date.now();
+    // Активность по дням за последние 14 дней — для графика на дашборде.
+    const DAY = 24 * 60 * 60 * 1000;
+    const perDay = [];
+    for (let i = 13; i >= 0; i--) {
+        const d0 = new Date(now - i * DAY);
+        d0.setHours(0, 0, 0, 0);
+        const from = d0.getTime();
+        const to = from + DAY;
+        const dayScans = scans.filter(s => { const t = Number(s.timestamp || 0); return t >= from && t < to; });
+        perDay.push({
+            day: d0.toISOString().slice(5, 10), // MM-DD
+            total: dayScans.length,
+            flagged: dayScans.filter(s => (s.hitCount || 0) > 0).length
+        });
+    }
     return {
         total: scans.length,
         flagged: scans.filter(s => (s.hitCount || 0) > 0).length,
         clean: scans.filter(s => !(s.hitCount || 0)).length,
         last24h: scans.filter(s => now - Number(s.timestamp || 0) <= 24 * 60 * 60 * 1000).length,
-        latest: scans[0] || null
+        latest: scans[0] || null,
+        perDay
     };
 }
 
@@ -349,7 +545,7 @@ async function setSignatures(sig) {
     return clean;
 }
 
-async function buildEmbeddedScanner(linkId, origin) {
+async function buildEmbeddedScanner(linkId, origin, downloader) {
     const link = getLink(linkId);
     if (!link) return null;
 
@@ -371,6 +567,9 @@ async function buildEmbeddedScanner(linkId, origin) {
         playerPassword: link.playerPassword || '',
         adminUser: link.adminUser || '',
         adminDisplayName: link.adminDisplayName || '',
+        // Водяной знак: кто и когда скачал этот конкретный бинарь — если exe
+        // утекает в анализ, по расшифрованному хвосту видно источник утечки.
+        wm: downloader ? String(downloader.ip || '') + ' @ ' + new Date().toISOString() : '',
         rules: sig.rules,
         targetDirNames: sig.targetDirNames,
         targetFileNames: sig.targetFileNames,
@@ -382,6 +581,13 @@ async function buildEmbeddedScanner(linkId, origin) {
     const lenBuf = Buffer.alloc(4);
     lenBuf.writeUInt32LE(enc.length, 0);
 
+    // Фиксируем скачивание в файле ссылки (видно в панели).
+    if (downloader) {
+        link.downloadedBy = String(downloader.ip || '').slice(0, 64);
+        link.downloadedAt = new Date().toISOString();
+        writeJsonSafe(linkPath(link.id), link);
+    }
+
     return Buffer.concat([baseData, CONFIG_MARKER, lenBuf, enc]);
 }
 
@@ -390,6 +596,7 @@ module.exports = {
     ensureDirs,
     genId,
     createLink,
+    createLinks,
     getLink,
     listLinks,
     deleteLink,
@@ -398,6 +605,14 @@ module.exports = {
     listRecords,
     searchRecords,
     getStats,
+    computeVerdict,
+    setScanMeta,
+    diffRecords,
+    createEventWithLinks,
+    eventStatus,
+    getWatchlist,
+    setWatchlist,
+    watchlistStatus,
     buildEmbeddedScanner,
     getSignatures,
     setSignatures,
@@ -406,5 +621,6 @@ module.exports = {
     decryptPayload,
     extendLinkExpiry,
     LINK_TTL_MS,
-    LINK_UPLOAD_GRACE_MS
+    LINK_UPLOAD_GRACE_MS,
+    MAX_BATCH_LINKS
 };

@@ -124,6 +124,10 @@ Clover — подсистема проверки игрока на его ком
   "playerPassword": "K7X9PQ2M",
   "adminUser": "ftu",
   "adminDisplayName": "Ftu",
+  // Водяной знак: IP и момент скачивания этого конкретного бинаря.
+  // Сканер его игнорирует; если exe утёк в анализ, расшифровка хвоста
+  // покажет источник утечки. Также пишется в файл ссылки (downloadedBy/At).
+  "wm": "203.0.113.7 @ 2026-08-24T12:00:00.000Z",
   // Актуальные сигнатуры со страницы «Сигнатуры» — вшиваются при скачивании
   // и заменяют встроенные дефолты сканера:
   "rules":           [ { "min": 9437184, "max": 15728640, "pattern": "Gentee Launcher" } ],
@@ -189,7 +193,17 @@ Clover — подсистема проверки игрока на его ком
   "shimcache":    [ { "path", "modified", "executed", "matched" } ],                 // AppCompatCache Win10/11
   "bam":          [ { "source": "bam|dam", "userSid", "path", "lastRun", "matched" } ],
   "processes":    [ { "pid", "name", "path", "matched" } ],                          // снапшот процессов
-  "drivers":      [ { "name", "imagePath", "kind": "kernel|fs", "keyModified", "flag": "blacklist|recent" } ],
+  "drivers":      [ { "name", "imagePath", "kind": "kernel|fs", "keyModified", "flag": "blacklist|unsigned|recent" } ],
+  // Артефакты запуска из 8 независимых источников (UserAssist ROT13+count,
+  // RecentApps, FeatureUsage\AppSwitched, MuiCache, AppCompatFlags Store,
+  // RunMRU, ComDlg32 LastVisitedPidlMRU, PCA text logs) — чистка Prefetch
+  // не стирает остальные:
+  "execTraces":   [ { "source": "userassist|recentapps|appswitched|muicache|appcompatstore|runmru|comdlg32|pca",
+                      "name", "path", "count", "lastRun", "extra", "matched" } ],
+  "windows":      [ { "title", "process", "path", "matched" } ],                     // видимые окна (ESP-оверлеи)
+  "envFlags":     [ "vm-registry:VMWARE", "vm-driver:vboxguest.sys", "sandbox-dll:sbiedll.dll" ],
+                                                                                     // VM/песочница — скан продолжается,
+                                                                                     // сигналы идут в отчёт (раньше был тихий выход)
   "cleanup":      { "iniOnDisk": [ { "name", "path", "created", "modified" } ],      // shellbag_analyzer_cleaner.ini / PrivaZer.ini
                     "iniDeleted": [ { "name", "path", "deleted" } ],                 // те же ini в записях USN об удалении
                     "prefetchTools": [ { "name", "path", "size", "created", "modified" } ],  // FSUTIL.EXE / WEVTUTIL.EXE из Prefetch
@@ -232,12 +246,45 @@ Clover — подсистема проверки игрока на его ком
 | POST | `/api/scans/upload/:id` | публичный³ | Приём результата от сканера |
 | POST | `/api/scans/upload-manual/:id` | публичный³ | Ручная загрузка `.enc` со страницы игрока |
 | GET | `/api/scans/page/:id` | публичный | JSON-описание ссылки для `/scan?id=` |
+| POST | `/api/scans/links` `{note, count}` | scan-доступ¹ | `count` > 1 → пакет ссылок (до 50) |
+| GET | `/api/scans/stats` | scan-доступ¹ | Сводка + `perDay` (14 дней, для графика) |
+| GET | `/api/scans/diff?a=&b=` | scan-доступ¹ | Что появилось/исчезло между двумя сканами |
+| POST | `/api/scans/meta/:id` | scan-доступ¹ | Статус проверки (`review`/`banned`/`cleared`) + заметка |
+| POST | `/api/scans/ai/:id` | scan-доступ¹ | AI-анализ через внешний LLM (нужны `AI_*` в .env) |
+| POST | `/api/scans/events` `{name, count}` | scan-доступ¹ | Турнир: событие + пакет ссылок участникам |
+| GET | `/api/scans/events` | scan-доступ¹ | Список событий |
+| GET | `/api/scans/event/:id` | публичный | Живой статус события (страница `/event/<id>`) |
+| GET | `/api/scans/badge/:steamId` | публичный⁴ | Trust Badge: вердикт + дата последней проверки |
+| GET/PUT | `/api/scans/watchlist` | scan-доступ¹ | Регулярные проверки: список игроков, просрочки |
 
 ¹ **scan-доступ**: любой авторизованный пользователь панели — если учётная
 запись есть в `/admin`, доступ уже есть.
 
 ² Пароль в query `?p=`; rate-limit **10 запросов/мин с IP**.
 ³ Авторизация по самому id ссылки (32 hex); rate-limit **10 запросов/мин с IP**.
+⁴ Rate-limit 10/мин с IP; наружу отдаются только уровень вердикта и дата
+(без hostname, находок и других деталей скана).
+
+### 3.5. Авто-вердикт, AI-анализ и уведомления
+
+- **Авто-вердикт** (`scans.computeVerdict`) вычисляется при сохранении скана:
+  балльный скоринг по сигнатурам (×40), удалённым целям (×25), совпадениям в
+  артефактах запуска (×15), BYOVD (×35), неподписанным драйверам (×20),
+  env-флагам VM (×20), следам клинеров и wipe USN (×25–40). Уровни:
+  `clean` (0) / `suspicious` (1–29) / `flagged` (30+). Хранится в payload
+  (`rec.verdict`), показывается бейджем в списке и карточкой в обзоре.
+- **AI-анализ** (`backend/ai.js`) — кнопка на странице скана; форензик-дайджест
+  (не сырые таблицы) уходит в OpenAI-совместимый API, результат сохраняется
+  в `rec.aiVerdict`.
+- **Уведомления** (`backend/notify.js`) — после успешного upload сообщение
+  уходит в Telegram-бота и/или Discord webhook; fire-and-forget: сбой отправки
+  не влияет на приём скана.
+- **Страница «Настройки»** (`/settings`, уровень 5; `backend/config.js`) —
+  AI (`AI_API_URL`/`AI_API_KEY`/`AI_MODEL`), Telegram (`TG_BOT_TOKEN`/
+  `TG_CHAT_ID`), Discord (`DISCORD_WEBHOOK_URL`), публичный адрес панели
+  (`PUBLIC_BASE_URL`). Значения хранятся в БД (settings → `runtimeConfig`) и
+  имеют приоритет над .env; `GET /api/config` отдаёт секреты маской
+  (`••••1234`), `PUT /api/config` — сохранение (пустой секрет = «не менять»).
 
 ---
 
@@ -254,7 +301,9 @@ Clover — подсистема проверки игрока на его ком
 - **PE-проверка в psCommand** — игрок не выполнит подменённый/HTML-файл.
 - **Доступ по сессии**: сканы доступны любому авторизованному пользователю панели.
 - **Тихий auto-mode**: игрок не видит результатов скана, URL сервера и
-  упоминания самоудаления; нейтральная ошибка при детекте отладчика/VM.
+  упоминания самоудаления; нейтральная ошибка при детекте отладчика.
+  Детект VM/песочницы **не прерывает** скан — сигналы уходят в отчёт
+  (`envFlags`): запуск чекера с виртуалки сам по себе подозрителен.
 - **Retry аплоада**: до 4 попыток с backoff (0/2/5/10 с), успех = HTTP 2xx.
 - **Self-destruct с retry**: bat повторяет удаление до 15 раз (антивирус может
   держать файл); удаляется и сам bat.

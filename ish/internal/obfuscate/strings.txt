@@ -48,5 +48,17 @@ REG_BAM_KEY=SYSTEM\CurrentControlSet\Services\bam\State\UserSettings
 REG_DAM_KEY=SYSTEM\CurrentControlSet\Services\dam\State\UserSettings
 REG_SERVICES_KEY=SYSTEM\CurrentControlSet\Services
 
+# Execution-trace artifacts (HKCU unless noted).
+REG_USERASSIST_KEY=Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist
+REG_RECENTAPPS_KEY=Software\Microsoft\Windows\CurrentVersion\Search\RecentApps
+REG_APPSWITCHED_KEY=Software\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched
+REG_MUICACHE_KEY=Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache
+REG_APPCOMPAT_STORE_KEY=Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store
+REG_RUNMRU_KEY=Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU
+REG_COMDLG32_KEY=Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRU
+PCA_DIR_NAME=appcompat\pca
+USER32=user32.dll
+WINTRUST=wintrust.dll
+
 # Known-abused / BYOVD driver blacklist (comma-separated, lowercase).
 DRIVER_BLACKLIST=iqvw64e.sys,iqvw64.sys,dbutil_2_3.sys,capcom.sys,rtcore64.sys,rtcore32.sys,winring0.sys,winring0x64.sys,gdrv.sys,inpoutx64.sys,inpout32.sys,ntiolib.sys,ntiolib_x64.sys,msio64.sys,msio32.sys,physmem.sys,kprocesshacker.sys,mhyprot2.sys,mhyprot.sys,kdstinker.sys,amifldrv64.sys,asio64.sys,gmer64.sys,hw.sys,kguard.sys,knpcdev.sys,my.sys,pcdrv64.sys,pfc64.sys,rambpf64.sys,smepcap.sys,speedfan.sys,tbs.sys,vmdrv.sys,wsprvt.sys,xhunter1.sys,zam64.sys,zamguard64.sys

@@ -125,13 +125,29 @@ module.exports = function createScansHandler(deps) {
             const session = await requireScanAccess(req, res);
             if (!session) return true;
             const body = await readJsonBody(req);
+            const origin = getOrigin(req);
+            // Пакетное создание: count > 1 → массив ссылок (проверка всей команды).
+            const count = Math.min(Math.max(1, Number(body.count) || 1), scans.MAX_BATCH_LINKS || 50);
+            if (count > 1) {
+                const links = scans.createLinks({
+                    note: body.note, count,
+                    adminUser: session.username,
+                    adminDisplayName: session.displayName
+                });
+                safeLog(session, 'scan_link_create_batch', null, String(body.note || ''), 'count=' + count);
+                const withUrls = links.map(link => ({
+                    ...link,
+                    playerUrl: origin + '/scan?id=' + link.id
+                }));
+                sendJson(res, 200, { links: withUrls });
+                return true;
+            }
             const link = scans.createLink({
                 note: body.note,
                 adminUser: session.username,
                 adminDisplayName: session.displayName
             });
             safeLog(session, 'scan_link_create', null, String(body.note || ''), 'linkId=' + link.id);
-            const origin = getOrigin(req);
             const downloadUrl = origin + '/api/scans/download/' + link.id + '?p=' + encodeURIComponent(link.playerPassword || '');
             const downloadUrlB64 = origin + '/api/scans/download-b64/' + link.id + '?p=' + encodeURIComponent(link.playerPassword || '');
             // Случайное имя файла, чтобы бинарь не совпадал с репутационными
@@ -146,7 +162,7 @@ module.exports = function createScansHandler(deps) {
             // PowerShell one-liner: качает JSON с base64-бинарём, декодирует, проверяет PE-заголовок
             // (x64), запускает. Обходит CDN, которые подменяют сырой бинарный ответ HTML-челленджем.
             const psCommand = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + downloadUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p -ErrorAction SilentlyContinue"';
-            sendJson(res, 200, { link, cmdCommand, psCommand, downloadUrl, downloadUrlB64, exeName: rndName });
+            sendJson(res, 200, { link, cmdCommand, psCommand, downloadUrl, downloadUrlB64, exeName: rndName, playerUrl: origin + '/scan?id=' + link.id });
             return true;
         }
         if (/^\/api\/scans\/links\/[a-f0-9]+$/.test(parsedUrl.pathname) && req.method === 'DELETE') {
@@ -198,6 +214,56 @@ module.exports = function createScansHandler(deps) {
             sendJson(res, 200, rec);
             return true;
         }
+        // Админ-метаданные скана: статус проверки + заметка (POST сохраняет).
+        if (/^\/api\/scans\/meta\/[a-f0-9]+$/.test(parsedUrl.pathname) && req.method === 'POST') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const id = parsedUrl.pathname.split('/').pop();
+            const body = await readJsonBody(req);
+            const status = String(body.status || '');
+            if (status && !['review', 'banned', 'cleared'].includes(status)) {
+                sendError(res, 400, 'BAD_STATUS', 'status: review | banned | cleared');
+                return true;
+            }
+            const meta = await scans.setScanMeta(id, { status, note: body.note }, session);
+            if (!meta) { sendError(res, 404, 'NOT_FOUND', 'Scan not found'); return true; }
+            safeLog(session, 'scan_meta', null, id, 'status=' + (status || '-'));
+            sendJson(res, 200, { meta });
+            return true;
+        }
+        // Сравнение двух сканов (например двух проверок одного игрока):
+        // какие записи появились/исчезли между ними.
+        if (parsedUrl.pathname === '/api/scans/diff' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const aId = parsedUrl.searchParams.get('a') || '';
+            const bId = parsedUrl.searchParams.get('b') || '';
+            const [a, b] = await Promise.all([scans.getRecord(aId), scans.getRecord(bId)]);
+            if (!a || !b) { sendError(res, 404, 'NOT_FOUND', 'Scan not found'); return true; }
+            sendJson(res, 200, { a: aId, b: bId, changes: scans.diffRecords(a, b) });
+            return true;
+        }
+        // AI-анализ скана через внешний LLM (если настроен в .env).
+        if (/^\/api\/scans\/ai\/[a-f0-9]+$/.test(parsedUrl.pathname) && req.method === 'POST') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const ai = require('./ai');
+            if (!await ai.isEnabled()) { sendError(res, 400, 'AI_DISABLED', 'AI-анализ не настроен: страница «Настройки» → раздел AI'); return true; }
+            const id = parsedUrl.pathname.split('/').pop();
+            const rec = await scans.getRecord(id);
+            if (!rec) { sendError(res, 404, 'NOT_FOUND', 'Scan not found'); return true; }
+            try {
+                const verdict = await ai.analyzeScan(rec);
+                rec.aiVerdict = verdict;
+                const db = require('./database');
+                await db.updateScanRecord(rec);
+                safeLog(session, 'scan_ai', null, id, verdict.level + ' ' + verdict.confidence + '%');
+                sendJson(res, 200, { ai: verdict });
+            } catch (e) {
+                sendError(res, 502, 'AI_ERROR', String(e.message || e).slice(0, 300));
+            }
+            return true;
+        }
         // Сигнатуры сканера (страница «Сигнатуры»): читать могут все
         // пользователи панели, менять — только уровень 5.
         if (parsedUrl.pathname === '/api/scans/signatures' && req.method === 'GET') {
@@ -245,7 +311,7 @@ module.exports = function createScansHandler(deps) {
             const origin = getOrigin(req);
             let buf;
             try {
-                buf = await scans.buildEmbeddedScanner(id, origin);
+                buf = await scans.buildEmbeddedScanner(id, origin, { ip });
             } catch (e) {
                 sendError(res, 404, 'NOT_AVAILABLE', String(e.message || e));
                 return true;
@@ -278,7 +344,7 @@ module.exports = function createScansHandler(deps) {
             const origin = getOrigin(req);
             let buf;
             try {
-                buf = await scans.buildEmbeddedScanner(id, origin);
+                buf = await scans.buildEmbeddedScanner(id, origin, { ip });
             } catch (e) {
                 sendError(res, 404, 'NOT_AVAILABLE', String(e.message || e));
                 return true;
@@ -313,6 +379,7 @@ module.exports = function createScansHandler(deps) {
             }
             const rec = await scans.saveRecord(Object.assign({}, body, {
                 linkId: id,
+                eventId: link.eventId || undefined,
                 adminUser: link.adminUser || body.adminUser || '',
                 adminDisplayName: link.adminDisplayName || ''
             }));
@@ -345,11 +412,77 @@ module.exports = function createScansHandler(deps) {
             }
             const rec = await scans.saveRecord(Object.assign({}, body, {
                 linkId: id,
+                eventId: link.eventId || undefined,
                 adminUser: link.adminUser || body.adminUser || '',
                 adminDisplayName: link.adminDisplayName || ''
             }));
             console.log('[SCANS] manual uploaded scanId=' + rec.scanId + ' linkId=' + id + ' admin=' + (link.adminUser || '-'));
             sendJson(res, 200, { status: 'ok', scanId: rec.scanId });
+            return true;
+        }
+        // ─── Турнирный режим ──────────────────────────────────────────────
+        // Создать событие + пакет ссылок участникам.
+        if (parsedUrl.pathname === '/api/scans/events' && req.method === 'POST') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const body = await readJsonBody(req);
+            if (!body.name || !String(body.name).trim()) { sendError(res, 400, 'BAD_NAME', 'Нужно название события'); return true; }
+            const { event, links } = await scans.createEventWithLinks({
+                name: String(body.name).trim(),
+                count: body.count,
+                adminUser: session.username,
+                adminDisplayName: session.displayName
+            });
+            safeLog(session, 'event_create', null, String(body.name || ''), 'eventId=' + event.id + ' count=' + links.length);
+            const origin = getOrigin(req);
+            sendJson(res, 200, {
+                event,
+                links: links.map(l => ({ ...l, playerUrl: origin + '/scan?id=' + l.id })),
+                eventUrl: origin + '/event/' + event.id
+            });
+            return true;
+        }
+        if (parsedUrl.pathname === '/api/scans/events' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const db = require('./database');
+            sendJson(res, 200, { events: await db.listEvents() });
+            return true;
+        }
+        // Публичный живой статус события (страница /event/<id>).
+        if (/^\/api\/scans\/event\/[a-f0-9]{16}$/.test(parsedUrl.pathname) && req.method === 'GET') {
+            const id = parsedUrl.pathname.split('/').pop();
+            const status = await scans.eventStatus(id);
+            if (!status) { sendError(res, 404, 'NOT_FOUND', 'Event not found'); return true; }
+            sendJson(res, 200, status);
+            return true;
+        }
+        // ─── Trust Badge: публичный статус последней проверки по SteamID ──
+        if (/^\/api\/scans\/badge\/\d{10,20}$/.test(parsedUrl.pathname) && req.method === 'GET') {
+            const steamId = parsedUrl.pathname.split('/').pop();
+            const ip = getClientIp(req);
+            if (!checkScanRateLimit(ip, SCAN_DOWNLOAD_LIMIT)) { sendError(res, 429, 'RATE_LIMIT', 'Too many requests'); return true; }
+            const db = require('./database');
+            const last = await db.getLatestScanBySteamId(steamId);
+            if (!last) { sendJson(res, 200, { found: false }); return true; }
+            // Наружу отдаём только вердикт и дату — без hostname/находок.
+            sendJson(res, 200, { found: true, timestamp: last.timestamp, verdict: last.verdict ? last.verdict.level : 'unknown' });
+            return true;
+        }
+        // ─── Watchlist: регулярные проверки ───────────────────────────────
+        if (parsedUrl.pathname === '/api/scans/watchlist' && req.method === 'GET') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            sendJson(res, 200, { watchlist: await scans.watchlistStatus() });
+            return true;
+        }
+        if (parsedUrl.pathname === '/api/scans/watchlist' && req.method === 'PUT') {
+            const session = await requireScanAccess(req, res);
+            if (!session) return true;
+            const body = await readJsonBody(req);
+            const list = await scans.setWatchlist(body.watchlist !== undefined ? body.watchlist : body);
+            safeLog(session, 'watchlist_update', null, null, 'count=' + list.length);
+            sendJson(res, 200, { watchlist: await scans.watchlistStatus() });
             return true;
         }
         // JSON-описание ссылки для страницы игрока /scan?id=...

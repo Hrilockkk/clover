@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Вход — Clover</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
     <style>
         .auth-card { animation: card-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -45,6 +45,7 @@
         </div>
     </div>
 
+    <script src="/js/ui.js"></script>
     <script>
         function safeNext() {
             const next = new URLSearchParams(location.search).get('next') || '/scans';

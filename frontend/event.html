@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Событие — Clover</title>
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
+    <link rel="stylesheet" href="/css/clover.css">
+</head>
+<body class="clover-field">
+    <div class="min-h-screen flex items-center justify-center p-6">
+        <div class="panel p-8 max-w-xl w-full">
+            <div class="text-center mb-6">
+                <span class="logo-mark logo-lg mb-4 inline-flex"><i class="ph ph-trophy text-2xl"></i></span>
+                <h1 class="text-lg font-bold text-white" id="evName">Событие</h1>
+                <p class="text-emerald-100/40 text-xs mt-1" id="evMeta"></p>
+            </div>
+            <div class="panel-2 p-4 mb-4 text-center">
+                <div class="stat-num" id="evProgress">—</div>
+                <p class="text-emerald-100/40 text-xs mt-1">участников проверено</p>
+                <div class="w-full h-2 rounded-full mt-3" style="background:var(--surface-3)">
+                    <div id="evBar" class="h-2 rounded-full transition-all" style="width:0%;background:var(--gradient-accent)"></div>
+                </div>
+            </div>
+            <div id="evDone"></div>
+            <div id="evPending"></div>
+            <p class="text-emerald-100/25 text-[11px] text-center mt-6">Страница обновляется автоматически каждые 15 секунд.</p>
+        </div>
+    </div>
+    <script src="/js/ui.js"></script>
+    <script>
+        const eventId = location.pathname.split('/').filter(Boolean).pop();
+        function vtag(v) {
+            const m = { clean: ['tag-green', 'чисто'], suspicious: ['tag-amber', 'подозр.'], flagged: ['tag-red', 'находки'] };
+            const x = m[v && v.level] || m.suspicious;
+            return '<span class="tag ' + x[0] + '">' + x[1] + '</span>';
+        }
+        async function load() {
+            try {
+                const res = await fetch('/api/scans/event/' + encodeURIComponent(eventId));
+                const data = await res.json();
+                if (!res.ok) {
+                    document.getElementById('evName').textContent = 'Событие не найдено';
+                    return;
+                }
+                document.getElementById('evName').textContent = data.event.name;
+                document.getElementById('evMeta').textContent = 'создано ' + fmtDate(data.event.createdAt);
+                document.getElementById('evProgress').textContent = data.completed + ' / ' + data.total;
+                document.getElementById('evBar').style.width = (data.total ? Math.round(data.completed / data.total * 100) : 0) + '%';
+                document.getElementById('evDone').innerHTML = data.done.length
+                    ? '<p class="text-emerald-100/40 text-xs uppercase tracking-wider mb-2">Прошли проверку</p>' +
+                      data.done.map(d => '<div class="panel-2 px-4 py-3 mb-2 flex items-center gap-3">' +
+                          '<i class="ph ph-check-circle" style="color:var(--emerald)"></i>' +
+                          '<span class="text-sm text-white font-semibold">' + esc(d.hostname || d.scanId.slice(0, 8)) + '</span>' +
+                          '<span class="text-emerald-100/40 text-xs">' + fmtDate(d.timestamp) + '</span>' +
+                          '<span class="ml-auto">' + vtag(d.verdict) + '</span></div>').join('')
+                    : '';
+                document.getElementById('evPending').innerHTML = data.pending.length
+                    ? '<p class="text-emerald-100/40 text-xs uppercase tracking-wider mb-2 mt-4">Ожидают</p>' +
+                      data.pending.map(p => '<div class="panel-2 px-4 py-3 mb-2 flex items-center gap-3 opacity-60">' +
+                          '<i class="ph ph-hourglass-medium"></i>' +
+                          '<span class="text-sm">' + esc(p.note || 'Участник') + '</span>' +
+                          '<span class="ml-auto text-xs text-emerald-100/40">ожидает проверки</span></div>').join('')
+                    : '';
+            } catch (_) {}
+        }
+        load();
+        setInterval(load, 15000);
+    </script>
+</body>
+</html>

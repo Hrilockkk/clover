@@ -6,9 +6,9 @@
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Clover — проверка игроков</title>
     <meta name="description" content="Clover Scan — система проверки игроков: одноразовая ссылка, автоматическая проверка ПК и готовый отчёт в панели.">
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
     <style>
         .site-nav { position: sticky; top: 0; z-index: 100; background: rgba(6, 15, 10, 0.88); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
@@ -88,26 +88,10 @@
                             <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 pb-2.5 border-b border-emerald-300/10">
                                 <span class="th">Проверка</span><span class="th">Дата</span><span class="th">Длит.</span><span class="th">Итог</span>
                             </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
-                                <span class="text-white text-sm font-semibold">vasya</span>
-                                <span class="mono text-emerald-100/60 text-xs">сегодня 14:22</span>
-                                <span class="mono text-emerald-100/60 text-xs">48 c</span>
-                                <span class="tag tag-red">находки</span>
-                            </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10">
-                                <span class="text-white text-sm font-semibold">kio</span>
-                                <span class="mono text-emerald-100/60 text-xs">сегодня 13:05</span>
-                                <span class="mono text-emerald-100/60 text-xs">51 c</span>
-                                <span class="tag tag-em">чисто</span>
-                            </div>
-                            <div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3">
-                                <span class="text-white text-sm font-semibold">m4k</span>
-                                <span class="mono text-emerald-100/60 text-xs">вчера 21:40</span>
-                                <span class="mono text-emerald-100/60 text-xs">47 c</span>
-                                <span class="tag tag-em">чисто</span>
-                            </div>
-                            <div class="mt-4 mono text-[11px] text-emerald-200/40">
-                                подробности скана видны только проверяющему
+                            <div id="heroRows"></div>
+                            <div class="mt-4 mono text-[11px] text-emerald-200/40 flex items-center gap-2">
+                                <span id="heroDot" class="inline-block w-1.5 h-1.5 rounded-full" style="background:var(--emerald)"></span>
+                                <span id="heroStatus">сканирование…</span>
                             </div>
                         </div>
                     </div>
@@ -212,6 +196,21 @@
                         <p class="text-white text-sm font-semibold">Одноразовость</p>
                         <p class="text-emerald-100/45 text-[13px] mt-1.5">Ссылка умирает после проверки — повторно не воспользоваться</p>
                     </div>
+                    <div class="panel card-hover p-5">
+                        <span class="feature-icon mb-3.5"><i class="ph ph-footprints text-emerald-300"></i></span>
+                        <p class="text-white text-sm font-semibold">Артефакты запуска</p>
+                        <p class="text-emerald-100/45 text-[13px] mt-1.5">8 независимых источников: UserAssist, RecentApps, AppSwitched, MuiCache, AppCompat, RunMRU, ComDlg32, PCA — чистка одного не стирает остальные</p>
+                    </div>
+                    <div class="panel card-hover p-5">
+                        <span class="feature-icon mb-3.5"><i class="ph ph-app-window text-emerald-300"></i></span>
+                        <p class="text-white text-sm font-semibold">Окна и оверлеи</p>
+                        <p class="text-emerald-100/45 text-[13px] mt-1.5">Список видимых окон на момент проверки ловит ESP-оверлеи, замаскированные под игру</p>
+                    </div>
+                    <div class="panel card-hover p-5">
+                        <span class="feature-icon mb-3.5"><i class="ph ph-warning-octagon text-emerald-300"></i></span>
+                        <p class="text-white text-sm font-semibold">Детект VM</p>
+                        <p class="text-emerald-100/45 text-[13px] mt-1.5">Запуск из-под виртуалки или песочницы не прерывает проверку, а попадает в отчёт как находка</p>
+                    </div>
                 </div>
             </section>
 
@@ -289,5 +288,47 @@
             </div>
         </footer>
     </div>
+    <script src="/js/ui.js"></script>
+    <script>
+        // Живой мок отчёта: строки добавляются циклом, как в настоящей панели.
+        (function () {
+            const SAMPLES = [
+                { name: 'vasya', date: 'сегодня 14:22', dur: '48 c', bad: true },
+                { name: 'kio', date: 'сегодня 13:05', dur: '51 c', bad: false },
+                { name: 'm4k', date: 'вчера 21:40', dur: '47 c', bad: false },
+                { name: 'zed', date: 'вчера 20:11', dur: '55 c', bad: true },
+                { name: 'nano', date: 'вчера 18:02', dur: '44 c', bad: false }
+            ];
+            const rowsEl = document.getElementById('heroRows');
+            const statusEl = document.getElementById('heroStatus');
+            if (!rowsEl) return;
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            let idx = 0, shown = 0;
+            function rowHtml(s) {
+                return '<div class="grid grid-cols-[1fr_1fr_1fr_auto] gap-x-4 items-center py-3 border-b border-emerald-300/10 hero-row">' +
+                    '<span class="text-white text-sm font-semibold">' + s.name + '</span>' +
+                    '<span class="mono text-emerald-100/60 text-xs">' + s.date + '</span>' +
+                    '<span class="mono text-emerald-100/60 text-xs">' + s.dur + '</span>' +
+                    (s.bad ? '<span class="tag tag-red">находки</span>' : '<span class="tag tag-em">чисто</span>') +
+                    '</div>';
+            }
+            function tick() {
+                const scanning = shown < SAMPLES.length;
+                statusEl.textContent = scanning ? 'сканирование ' + SAMPLES[idx].name + '…' : 'подробности скана видны только проверяющему';
+                if (scanning) {
+                    const div = document.createElement('div');
+                    div.innerHTML = rowHtml(SAMPLES[idx]);
+                    const row = div.firstChild;
+                    if (!reduced) { row.style.opacity = '0'; row.style.transform = 'translateY(6px)'; row.style.transition = 'opacity .3s, transform .3s'; }
+                    rowsEl.appendChild(row);
+                    requestAnimationFrame(() => { row.style.opacity = '1'; row.style.transform = 'none'; });
+                    idx = (idx + 1) % SAMPLES.length;
+                    shown++;
+                }
+                setTimeout(tick, scanning ? 1600 : 4000);
+            }
+            tick();
+        })();
+    </script>
 </body>
 </html>

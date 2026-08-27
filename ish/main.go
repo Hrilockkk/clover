@@ -35,6 +35,9 @@ import (
 
 func main() {
 	anti.RunHardening()
+	// VM/sandbox signals do not abort the scan (see anti docs): they are
+	// collected and shipped with the results as an environment finding.
+	envFlags := anti.DetectEnvironment()
 
 	if exe, err := os.Executable(); err == nil {
 		if real, realErr := filepath.EvalSymlinks(exe); realErr == nil {
@@ -52,12 +55,13 @@ func main() {
 		}
 	}
 
-	runCLI()
+	runCLI(envFlags)
 }
 
-func runCLI() {
+func runCLI(envFlags []string) {
 	jsonFlag := flag.Bool("json", false, "Output results as JSON")
 	noPauseFlag := flag.Bool("no-pause", false, "Skip 'Press ENTER to exit'")
+	fastFlag := flag.Bool("fast", false, "Fast mode: registry/snapshot collectors only, no disk walk")
 	configPath := flag.String("config", obfuscate.CONFIG_FILE(), "Путь к файлу конфигурации JSON (config.clover)")
 	uploadURL := flag.String("upload-url", "", "Server URL to upload scan results (e.g. http://server:8080)")
 	scanID := flag.String("scan-id", "", "Scan link ID from the server")
@@ -128,29 +132,38 @@ func runCLI() {
 	}
 
 	engine := scan.New(cfg, selfExePath, selfExeName)
+	engine.SetEnvFlags(envFlags)
 
-	pathChan := make(chan models.FileCandidate, 10000)
-	mappedChan := make(chan models.MappedFile, runtime.NumCPU()*4)
+	fast := *fastFlag
 
-	progress := output.NewProgress(engine)
-	if autoMode {
-		progress.SetQuiet(playerOut)
+	if !fast {
+		pathChan := make(chan models.FileCandidate, 10000)
+		mappedChan := make(chan models.MappedFile, runtime.NumCPU()*4)
+
+		progress := output.NewProgress(engine)
+		if autoMode {
+			progress.SetQuiet(playerOut)
+		}
+		progress.Start(ctx)
+
+		go func() {
+			engine.Walker(ctx, drives, pathChan)
+		}()
+		go engine.Reader(ctx, pathChan, mappedChan)
+
+		engine.Matcher(ctx, mappedChan)
+		progress.Stop()
 	}
-	progress.Start(ctx)
 
-	go func() {
-		engine.Walker(ctx, drives, pathChan)
-	}()
-	go engine.Reader(ctx, pathChan, mappedChan)
-
-	engine.Matcher(ctx, mappedChan)
-	progress.Stop()
-
-	// Auxiliary scans (shellbags + AppData roaming + Amcache + CS2 runtime +
-	// HWID + Steam + launch traces + processes/drivers) after main pipeline.
-	// Each collector is isolated: a panic in one must not kill the scan.
-	safeRun("shellbags", engine.ScanShellbags)
-	safeRun("appdata", engine.ScanAppDataRoaming)
+	// Auxiliary scans after the main pipeline. Each collector is isolated:
+	// a panic in one must not kill the scan (and its upload).
+	// Fast mode runs only the registry/snapshot collectors (seconds instead
+	// of minutes) and skips the disk-heavy ones (shellbags walk, AppData
+	// walk, USN journal, cleaner-ini search).
+	if !fast {
+		safeRun("shellbags", engine.ScanShellbags)
+		safeRun("appdata", engine.ScanAppDataRoaming)
+	}
 	safeRun("amcache", engine.ScanAmcache)
 	safeRun("cs2", engine.ScanCS2)
 	safeRun("hardware", engine.ScanHardware)
@@ -158,11 +171,15 @@ func runCLI() {
 	safeRun("prefetch", engine.ScanPrefetch)
 	safeRun("shimcache", engine.ScanShimcache)
 	safeRun("bamdam", engine.ScanBamDam)
+	safeRun("exectraces", engine.ScanExecTraces)
+	safeRun("windows", engine.ScanWindows)
 	safeRun("processes", engine.ScanProcesses)
 	safeRun("drivers", engine.ScanDrivers)
 	safeRun("services", engine.ScanServices)
-	safeRun("cleanup", func() { engine.ScanCleanup(drives) })
-	safeRun("usn", func() { engine.ScanUSNHistory(drives) })
+	if !fast {
+		safeRun("cleanup", func() { engine.ScanCleanup(drives) })
+		safeRun("usn", func() { engine.ScanUSNHistory(drives) })
+	}
 
 	results, dirResults, namedFiles, deletedFiles, deletedDirs, shellbags, appData, amcache, cs2Conns, cs2RWX, hw, steam, prefetch, shimcache, bamEntries, processes, drivers, extra := engine.Results()
 	results = dedup(results)
@@ -347,6 +364,9 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		Services     []models.ServiceEntry    `json:"services"`
 		Cleanup      *models.CleanupInfo      `json:"cleanup,omitempty"`
 		USN          []models.UsnEntry        `json:"usn,omitempty"`
+		ExecTraces   []models.ExecTraceEntry  `json:"execTraces,omitempty"`
+		Windows      []models.WindowEntry     `json:"windows,omitempty"`
+		EnvFlags     []string                 `json:"envFlags,omitempty"`
 		Elapsed      float64                  `json:"elapsedSeconds"`
 	}{
 		ScanID:       id,
@@ -375,6 +395,9 @@ func uploadScan(baseURL, id string, quiet bool, playerOut *os.File,
 		payload.Services = extra.Services
 		payload.Cleanup = extra.Cleanup
 		payload.USN = extra.USNHistory
+		payload.ExecTraces = extra.ExecTraces
+		payload.Windows = extra.Windows
+		payload.EnvFlags = extra.EnvFlags
 	}
 
 	body, err := json.Marshal(payload)

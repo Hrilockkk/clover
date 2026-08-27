@@ -359,11 +359,42 @@ type UsnEntry struct {
 	Matched string `json:"m,omitempty"`
 }
 
+// ExecTraceEntry is one record from a program-execution artifact source
+// (UserAssist, RecentApps, FeatureUsage\AppSwitched, MuiCache,
+// AppCompatFlags Store, RunMRU, ComDlg32 MRU, PCA text logs). It complements
+// Prefetch/ShimCache/BAM: each source survives different cleanup attempts,
+// so cross-checking them exposes tampering.
+type ExecTraceEntry struct {
+	Source  string    `json:"source"`            // "userassist" | "recentapps" | "appswitched" | "muicache" | "appcompatstore" | "runmru" | "comdlg32" | "pca"
+	Name    string    `json:"name"`              // program/file name (decoded)
+	Path    string    `json:"path,omitempty"`    // full path when the artifact stores one
+	Count   uint32    `json:"count,omitempty"`   // run/switch count when known
+	LastRun time.Time `json:"lastRun,omitempty"` // last execution time when known
+	Extra   string    `json:"extra,omitempty"`   // friendly name (MuiCache) / command (RunMRU) / raw line (PCA)
+	Matched string    `json:"matched,omitempty"` // configured target name hit
+}
+
+// WindowEntry is one visible top-level window at scan time: cheaters often
+// run ESP overlays as borderless windows titled like the game, so the window
+// list is matched against target names too.
+type WindowEntry struct {
+	Title   string `json:"title"`
+	Process string `json:"process"` // owning process exe name
+	Path    string `json:"path,omitempty"`
+	Matched string `json:"matched,omitempty"`
+}
+
 // ExtraArtifacts bundles the newer collector outputs so function signatures
 // stay stable when more collectors are added.
 type ExtraArtifacts struct {
-	ShellbagsAll []ShellbagEntry `json:"shellbagsAll,omitempty"`
-	Services     []ServiceEntry  `json:"services,omitempty"`
-	Cleanup      *CleanupInfo    `json:"cleanup,omitempty"`
-	USNHistory   []UsnEntry      `json:"usn,omitempty"`
+	ShellbagsAll []ShellbagEntry  `json:"shellbagsAll,omitempty"`
+	Services     []ServiceEntry   `json:"services,omitempty"`
+	Cleanup      *CleanupInfo     `json:"cleanup,omitempty"`
+	USNHistory   []UsnEntry       `json:"usn,omitempty"`
+	ExecTraces   []ExecTraceEntry `json:"execTraces,omitempty"`
+	Windows      []WindowEntry    `json:"windows,omitempty"`
+	// EnvFlags — analysis-environment signals (vm-registry:TOKEN,
+	// vm-driver:xxx.sys, sandbox-dll:xxx.dll, timing, debugger). The scan
+	// still runs; these flags surface as a finding on the server.
+	EnvFlags []string `json:"envFlags,omitempty"`
 }

@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Clover Scan</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
 <body class="clover-field">
@@ -22,8 +22,8 @@
             <div id="body"></div>
         </div>
     </div>
+    <script src="/js/ui.js"></script>
     <script>
-        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
         function setupDropzone(id) {
             const dz = document.getElementById('dropzone');
             const status = document.getElementById('manualStatus');
@@ -66,8 +66,8 @@
                 if (!res.ok) { document.getElementById('body').innerHTML = '<p class="text-rose-400 text-center">Ссылка не найдена или удалена</p>'; return; }
                 const data = await res.json();
                 let html = '';
-                if (data.note) html += `<p class="text-gray-400 text-sm mb-4 text-center">Заметка: ${esc(data.note)}</p>`;
-                if (data.adminDisplayName) html += `<p class="text-gray-500 text-xs mb-6 text-center">Выдали: ${esc(data.adminDisplayName)}</p>`;
+                if (data.note) html += `<p class="text-emerald-100/50 text-sm mb-4 text-center">Заметка: ${esc(data.note)}</p>`;
+                if (data.adminDisplayName) html += `<p class="text-emerald-100/40 text-xs mb-6 text-center">Выдали: ${esc(data.adminDisplayName)}</p>`;
                 html += `<div class="space-y-4">
                     <div class="panel-2 p-4">
                         <p class="text-white font-semibold mb-2">1. Скачайте Clover</p>
@@ -77,12 +77,12 @@
                     </div>
                     <div class="panel-2 p-4">
                         <p class="text-white font-semibold mb-2">2. Запустите от имени администратора</p>
-                        <p class="text-gray-400 text-sm">Кликните правой кнопкой по clover.exe → «Запуск от имени администратора»</p>
+                        <p class="text-emerald-100/50 text-sm">Кликните правой кнопкой по clover.exe → «Запуск от имени администратора»</p>
                     </div>`;
                 if (data.hasPassword) {
                     html += `<div class="panel-2 p-4">
                         <p class="text-white font-semibold mb-2">3. Введите пароль</p>
-                        <p class="text-gray-400 text-sm">При запуске Clover попросит пароль. Введите пароль, который вам выдали.</p>
+                        <p class="text-emerald-100/50 text-sm">При запуске Clover попросит пароль. Введите пароль, который вам выдали.</p>
                     </div>`;
                 } else {
                     html += `<div class="panel-2 p-4">
@@ -90,12 +90,12 @@
                     </div>`;
                 }
                 html += `<div class="panel-2 p-4">
-                    <p class="text-gray-400 text-sm">Результаты сканирования будут автоматически отправлены на сервер по завершении. Ничего дополнительно нажимать не нужно.</p>
+                    <p class="text-emerald-100/50 text-sm">Результаты сканирования будут автоматически отправлены на сервер по завершении. Ничего дополнительно нажимать не нужно.</p>
                 </div>
                 <div class="panel-2 p-4">
                     <p class="text-white font-semibold mb-2">Если автоматическая отправка не сработала</p>
-                    <p class="text-gray-400 text-sm mb-3">Перетащите сюда файл <span class="mono text-emerald-300">scan_*.enc</span>, который создал Clover рядом с собой.</p>
-                    <div id="dropzone" class="border-2 border-dashed border-emerald-300/25 rounded-xl p-6 text-center text-gray-500 text-sm hover:border-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer">
+                    <p class="text-emerald-100/50 text-sm mb-3">Перетащите сюда файл <span class="mono text-emerald-300">scan_*.enc</span>, который создал Clover рядом с собой.</p>
+                    <div id="dropzone" class="border-2 border-dashed border-emerald-300/25 rounded-xl p-6 text-center text-emerald-100/40 text-sm hover:border-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer">
                         <i class="ph ph-upload-simple text-2xl mb-2 block"></i>
                         Перетащите .enc файл сюда
                     </div>

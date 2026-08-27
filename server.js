@@ -41,6 +41,9 @@ const MIME = {
     '.jpg': 'image/jpeg',
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon',
+    '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.ttf': 'font/ttf',
     '.json': 'application/json; charset=utf-8'
 };
 
@@ -284,6 +287,28 @@ async function handleAdmin(req, res, parsedUrl) {
     return false;
 }
 
+// ─── Config API (настройки панели — только уровень 5) ───────────────────────
+
+async function handleConfig(req, res, parsedUrl) {
+    if (parsedUrl.pathname !== '/api/config') return false;
+    const session = await requireSession(req, res, 5);
+    if (!session) return true;
+    const config = require('./backend/config');
+    if (req.method === 'GET') {
+        sendJson(res, 200, { config: await config.getPublicConfig() });
+        return true;
+    }
+    if (req.method === 'PUT') {
+        let body;
+        try { body = await readJsonBody(req); } catch (_) { return sendError(res, 400, 'INVALID_JSON', 'Некорректный JSON'), true; }
+        const updated = await config.setRuntimeConfig(body.config || body);
+        safeLog(session, 'config_update', null, null, Object.keys(body.config || body).join(','));
+        sendJson(res, 200, { config: updated });
+        return true;
+    }
+    return false;
+}
+
 // ─── Статика и страницы ─────────────────────────────────────────────────────
 
 function serveFile(res, absPath) {
@@ -300,6 +325,11 @@ async function servePage(req, res, parsedUrl) {
     if (p === '/' || p === '/index.html') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'));
     if (p === '/auth') return serveFile(res, path.join(PUBLIC_DIR, 'auth.html'));
     if (p === '/scan') return serveFile(res, path.join(PUBLIC_DIR, 'scan-player.html'));
+
+    // Trust Badge: публичная карточка «игрок проверен» по SteamID.
+    if (/^\/badge\/\d{10,20}$/.test(p)) return serveFile(res, path.join(PUBLIC_DIR, 'badge.html'));
+    // Турнирный режим: публичная страница живого статуса события.
+    if (/^\/event\/[a-f0-9]{16}$/.test(p)) return serveFile(res, path.join(PUBLIC_DIR, 'event.html'));
 
     // Админка: защищена серверно — без сессии редирект на вход
     if (p === '/scans') {
@@ -330,8 +360,16 @@ async function servePage(req, res, parsedUrl) {
         return serveFile(res, path.join(PUBLIC_DIR, 'admin.html'));
     }
 
-    // Публичные статические файлы (js, css, images)
-    if (p.startsWith('/js/') || p.startsWith('/css/') || p.startsWith('/images/')) {
+    // Настройки панели (AI, уведомления): только уровень 5
+    if (p === '/settings') {
+        const session = await getSessionFromReq(req);
+        if (!session) return redirect(res, '/auth?next=/settings');
+        if ((session.level || 0) < 5) return redirect(res, '/scans');
+        return serveFile(res, path.join(PUBLIC_DIR, 'settings.html'));
+    }
+
+    // Публичные статические файлы (js, css, images, vendor — локальные ассеты вместо CDN)
+    if (p.startsWith('/js/') || p.startsWith('/css/') || p.startsWith('/images/') || p.startsWith('/vendor/')) {
         const rel = decodeURIComponent(p).replace(/^[/\\]+/, '');
         const abs = path.join(PUBLIC_DIR, rel);
         if (!abs.startsWith(PUBLIC_DIR)) return sendError(res, 403, 'FORBIDDEN', 'Недопустимый путь');
@@ -389,6 +427,7 @@ async function main() {
             }
             if (parsedUrl.pathname.startsWith('/api/')) {
                 if (await handleAuth(req, res, parsedUrl)) return;
+                if (await handleConfig(req, res, parsedUrl)) return;
                 if (await handleAdmin(req, res, parsedUrl)) return;
                 return sendError(res, 404, 'NOT_FOUND', 'Endpoint не найден');
             }

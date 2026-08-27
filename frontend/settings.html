@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Настройки — Clover</title>
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
+    <link rel="stylesheet" href="/css/clover.css">
+</head>
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <a href="/" class="sidebar-head">
+                <span class="logo-mark"><i class="ph ph-clover text-lg"></i></span>
+                <span class="brand-text">Clover</span>
+            </a>
+            <nav class="sidebar-nav">
+                <p class="sidebar-section">Проверки</p>
+                <a href="/scans" class="side-item"><i class="ph ph-link-simple"></i>Ссылки</a>
+                <a href="/scans" class="side-item"><i class="ph ph-clipboard-text"></i>Сканы</a>
+                <a href="/scans" class="side-item"><i class="ph ph-magnifying-glass"></i>Поиск</a>
+                <a href="/signatures" class="side-item"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
+                <p class="sidebar-section">Управление</p>
+                <a href="/admin" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
+                <a href="/settings" class="side-item active"><i class="ph ph-sliders-horizontal"></i>Настройки</a>
+            </nav>
+            <div class="sidebar-user">
+                <span class="avatar" id="userAvatar">·</span>
+                <div class="u-meta">
+                    <div class="u-name" id="userName">—</div>
+                    <div class="u-sub" id="userLevel">—</div>
+                </div>
+                <button onclick="logout()" class="btn btn-ghost btn-icon" title="Выйти из панели"><i class="ph ph-sign-out"></i></button>
+            </div>
+        </aside>
+
+        <!-- Content -->
+        <main class="app-content">
+            <div class="page-head">
+                <div>
+                    <div class="flex items-center gap-2 mb-2"><span class="tag tag-em"><i class="ph ph-sliders-horizontal"></i>Конфигурация панели</span><span class="text-emerald-100/30 text-xs">уровень 5</span></div>
+                    <h1 class="page-title">Настройки</h1>
+                    <p class="page-sub">Значения сохраняются в базу и имеют приоритет над .env. Пустое секретное поле = «не менять». Обычное поле можно очистить — вернётся значение из .env.</p>
+                </div>
+            </div>
+
+            <div id="loading"><div class="skeleton" style="height:120px;border-radius:10px"></div></div>
+
+            <div id="settingsBody" class="hidden">
+                <!-- AI -->
+                <div class="panel p-5 mb-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-robot text-emerald-300"></i>
+                        AI-анализ сканов
+                        <span id="aiStatus" class="tag tag-muted ml-2">—</span>
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-4">OpenAI-совместимый LLM для разбора сканов (кнопка «AI-анализ» на странице скана). Работает, когда заданы все три поля.</p>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="lg:col-span-2">
+                            <label class="f-label" for="aiApiUrl">API URL (endpoint chat completions)</label>
+                            <input type="text" id="aiApiUrl" placeholder="https://api.openai.com/v1/chat/completions" class="w-full mono text-xs">
+                        </div>
+                        <div>
+                            <label class="f-label" for="aiApiKey">API ключ <span class="mono text-emerald-100/30" id="aiApiKeyHint"></span></label>
+                            <input type="password" id="aiApiKey" placeholder="sk-…" class="w-full mono text-xs" autocomplete="new-password">
+                        </div>
+                        <div>
+                            <label class="f-label" for="aiModel">Модель</label>
+                            <input type="text" id="aiModel" placeholder="gpt-4o-mini" class="w-full mono text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Уведомления -->
+                <div class="panel p-5 mb-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-bell-ringing text-emerald-300"></i>
+                        Уведомления о новых сканах
+                        <span id="notifyStatus" class="tag tag-muted ml-2">—</span>
+                    </h2>
+                    <p class="text-emerald-100/40 text-xs mb-4">Сообщение при каждой загрузке скана. Можно включить Telegram, Discord или оба.</p>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div>
+                            <label class="f-label" for="tgBotToken">Telegram: токен бота <span class="mono text-emerald-100/30" id="tgBotTokenHint"></span></label>
+                            <input type="password" id="tgBotToken" placeholder="123456:ABCDEF…" class="w-full mono text-xs" autocomplete="new-password">
+                        </div>
+                        <div>
+                            <label class="f-label" for="tgChatId">Telegram: chat ID</label>
+                            <input type="text" id="tgChatId" placeholder="-1001234567890" class="w-full mono text-xs">
+                        </div>
+                        <div class="lg:col-span-2">
+                            <label class="f-label" for="discordWebhook">Discord: webhook URL <span class="mono text-emerald-100/30" id="discordWebhookHint"></span></label>
+                            <input type="password" id="discordWebhook" placeholder="https://discord.com/api/webhooks/…" class="w-full mono text-xs" autocomplete="new-password">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Общее -->
+                <div class="panel p-5 mb-5">
+                    <h2 class="text-[15px] font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="ph ph-globe text-emerald-300"></i>
+                        Общее
+                    </h2>
+                    <div class="grid grid-cols-1 gap-4 mt-4">
+                        <div>
+                            <label class="f-label" for="publicBaseUrl">Публичный адрес панели</label>
+                            <input type="text" id="publicBaseUrl" placeholder="https://clover.example.com" class="w-full mono text-xs">
+                            <p class="text-emerald-100/30 text-xs mt-1.5">Используется в уведомлениях для ссылки на скан. Если пусто — ссылки в уведомлении не будет.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button class="btn btn-primary" onclick="saveSettings()" id="saveBtn"><i class="ph ph-floppy-disk"></i> Сохранить</button>
+                    <button class="btn btn-ghost" onclick="loadSettings()"><i class="ph ph-arrows-clockwise"></i> Сбросить форму</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/js/session.js"></script>
+    <script src="/js/ui.js"></script>
+    <script>
+        let CFG = {}; // текущий публичный конфиг с сервера
+
+        const FIELD_IDS = ['aiApiUrl', 'aiApiKey', 'aiModel', 'tgBotToken', 'tgChatId', 'discordWebhook', 'publicBaseUrl'];
+
+        function statusTag(elId, on, onText) {
+            const el = document.getElementById(elId);
+            el.className = 'tag ml-2 ' + (on ? 'tag-green' : 'tag-muted');
+            el.textContent = on ? onText : 'выключено';
+        }
+
+        async function loadSettings() {
+            const res = await fetch('/api/config', { headers: authHeaders() });
+            if (!res.ok) { toast('Нет доступа (нужен уровень 5)', 'error'); return; }
+            CFG = (await res.json()).config || {};
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('settingsBody').classList.remove('hidden');
+            for (const id of FIELD_IDS) {
+                const f = CFG[id];
+                if (!f) continue;
+                const input = document.getElementById(id);
+                if (f.secret) {
+                    input.value = '';
+                    input.placeholder = f.set ? ('задано: ' + f.hint + (f.fromEnv ? ' (из .env)' : '')) : 'не задано';
+                    const hint = document.getElementById(id + 'Hint');
+                    if (hint) hint.textContent = f.set ? f.hint : '';
+                } else {
+                    input.value = f.value || '';
+                    if (f.fromEnv && !input.value) input.placeholder = '(из .env)';
+                }
+            }
+            const aiOn = !!(CFG.aiApiUrl?.set && CFG.aiApiKey?.set && CFG.aiModel?.set);
+            statusTag('aiStatus', aiOn, 'включён');
+            const notifyOn = !!((CFG.tgBotToken?.set && CFG.tgChatId?.set) || CFG.discordWebhook?.set);
+            statusTag('notifyStatus', notifyOn, 'включены');
+        }
+
+        async function saveSettings() {
+            const btn = document.getElementById('saveBtn');
+            btn.classList.add('is-loading'); btn.disabled = true;
+            const patch = {};
+            for (const id of FIELD_IDS) {
+                const v = document.getElementById(id).value.trim();
+                if (CFG[id] && CFG[id].secret && !v) continue; // секрет не меняем
+                patch[id] = v;
+            }
+            try {
+                const res = await fetch('/api/config', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ config: patch }) });
+                if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.message || 'Ошибка сохранения', 'error'); return; }
+                toast('Настройки сохранены');
+                await loadSettings();
+            } catch (e) { toast('Ошибка: ' + e.message, 'error'); }
+            finally { btn.classList.remove('is-loading'); btn.disabled = false; }
+        }
+
+        (async () => {
+            try {
+                const u = JSON.parse(localStorage.getItem('user') || '{}');
+                if (!u.sessionToken) { window.location.href = '/auth?next=/settings'; return; }
+                const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + u.sessionToken } });
+                if (!res.ok) { window.location.href = '/auth?next=/settings'; return; }
+                const me = await res.json();
+                if ((me.level || 0) < 5) { window.location.href = '/scans'; return; }
+                document.getElementById('userName').textContent = me.displayName || me.username || '';
+                document.getElementById('userLevel').textContent = 'Уровень ' + (me.level || 0);
+                document.getElementById('userAvatar').textContent = (me.displayName || me.username || '?').trim().charAt(0);
+                await loadSettings();
+            } catch (e) { window.location.href = '/auth?next=/settings'; }
+        })();
+    </script>
+</body>
+</html>

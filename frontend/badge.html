@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/images/iconhtml.png" type="image/png">
+    <title>Trust Badge — Clover</title>
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
+    <link rel="stylesheet" href="/css/clover.css">
+</head>
+<body class="clover-field">
+    <div class="min-h-screen flex items-center justify-center p-6">
+        <div class="panel p-8 max-w-md w-full text-center" id="content">
+            <span class="logo-mark logo-lg mb-4 inline-flex"><i class="ph ph-clover text-2xl"></i></span>
+            <h1 class="text-lg font-bold text-white mb-1">Clover Trust Badge</h1>
+            <p class="text-emerald-100/40 text-xs mb-6 mono" id="steamLine"></p>
+            <div id="body"><p class="text-emerald-100/40 text-sm">Загрузка…</p></div>
+        </div>
+    </div>
+    <script src="/js/ui.js"></script>
+    <script>
+        const steamId = location.pathname.split('/').filter(Boolean).pop();
+        document.getElementById('steamLine').textContent = 'SteamID ' + steamId;
+        (async () => {
+            const body = document.getElementById('body');
+            try {
+                const res = await fetch('/api/scans/badge/' + encodeURIComponent(steamId));
+                const data = await res.json();
+                if (!data.found) {
+                    body.innerHTML = '<span class="tag tag-muted text-sm px-4 py-2">Не проверялся</span>' +
+                        '<p class="text-emerald-100/40 text-xs mt-4">Этот игрок ещё не проходил проверку Clover.</p>';
+                    return;
+                }
+                const vmap = {
+                    clean:      ['tag-green',  'ph-seal-check',      'Проверен · чист',  'Последняя проверка не выявила находок.'],
+                    suspicious: ['tag-amber',  'ph-warning',         'Проверен · под вопросом', 'Последняя проверка содержит подозрительные сигналы.'],
+                    flagged:    ['tag-red',    'ph-warning-octagon', 'Находки',           'Последняя проверка содержит находки.'],
+                    unknown:    ['tag-muted',  'ph-question',        'Проверен',          'Проверка пройдена.']
+                };
+                const [cls, icon, title, sub] = vmap[data.verdict] || vmap.unknown;
+                body.innerHTML = '<div class="flex flex-col items-center gap-3">' +
+                    '<i class="ph ' + icon + ' text-4xl" style="color:var(--emerald)"></i>' +
+                    '<span class="tag ' + cls + ' text-sm px-4 py-2">' + title + '</span>' +
+                    '<p class="text-emerald-100/50 text-xs">' + sub + '</p>' +
+                    '<p class="text-emerald-100/40 text-xs">Последняя проверка: ' + fmtDate(data.timestamp) + '</p>' +
+                    '<p class="text-emerald-100/25 text-[11px] mt-2">Подробности проверки доступны только администрации проекта.</p>' +
+                    '</div>';
+            } catch (e) {
+                body.innerHTML = '<p class="text-rose-400 text-sm">Ошибка загрузки</p>';
+            }
+        })();
+    </script>
+</body>
+</html>

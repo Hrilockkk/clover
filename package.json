@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "adduser": "node scripts/adduser.js"
+    "adduser": "node scripts/adduser.js",
+    "build:css": "tailwindcss -c scripts/tailwind.config.js -i scripts/tailwind.src.css -o frontend/vendor/tailwind.css --minify"
   },
   "engines": {
     "node": ">=18"
@@ -15,6 +16,9 @@
     "pg": "^8.13.1"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^13.0.3"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
   }
 }

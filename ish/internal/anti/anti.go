@@ -24,17 +24,16 @@ import (
 	"scanner/internal/winapi"
 )
 
-// RunHardening executes all hardening checks. If anything suspicious is
-// detected, the process exits with a neutral, non-revealing message —
-// the exact reason (debugger/VM/timing) is never printed.
+// RunHardening executes the anti-tamper checks that must abort the scan
+// (debugger attached, timing single-step, renamed-exe analysis trick) with a
+// neutral, non-revealing message. VM/sandbox signals intentionally do NOT
+// abort anymore: the scan continues and they are reported as findings via
+// DetectEnvironment — a player running CS2 from a VM is itself suspicious.
 func RunHardening() {
 	if winapi.ProtectionBypassAllowed() {
 		return
 	}
 	if winapi.IsDebuggerPresent() {
-		exitNeutral()
-	}
-	if analysisEnvironment() {
 		exitNeutral()
 	}
 	if timingAnomaly() {
@@ -45,6 +44,26 @@ func RunHardening() {
 	}
 }
 
+// DetectEnvironment returns analysis-environment signals ("vm-registry:TOKEN",
+// "vm-driver:xxx.sys", "sandbox-dll:xxx.dll") without aborting. The server
+// surfaces them as a finding on the scan page.
+func DetectEnvironment() []string {
+	if winapi.ProtectionBypassAllowed() {
+		return nil
+	}
+	var flags []string
+	if tok := checkVMRegistry(); tok != "" {
+		flags = append(flags, "vm-registry:"+tok)
+	}
+	if drv := checkVMDrivers(); drv != "" {
+		flags = append(flags, "vm-driver:"+drv)
+	}
+	if dll := checkSandboxDLL(); dll != "" {
+		flags = append(flags, "sandbox-dll:"+dll)
+	}
+	return flags
+}
+
 // exitNeutral prints a generic initialization error and exits, without
 // disclosing which hardening check fired.
 func exitNeutral() {
@@ -52,25 +71,8 @@ func exitNeutral() {
 	os.Exit(1)
 }
 
-// analysisEnvironment returns true if the process appears to be running inside a
-// VM, sandbox, or analysis harness.
-func analysisEnvironment() bool {
-	// Registry-based VM detection.
-	if checkVMRegistry() {
-		return true
-	}
-	// Driver-based VM detection.
-	if checkVMDrivers() {
-		return true
-	}
-	// Sandboxie / similar DLL injection.
-	if checkSandboxDLL() {
-		return true
-	}
-	return false
-}
-
-func checkVMRegistry() bool {
+// checkVMRegistry returns the first matched VM token ("" when none).
+func checkVMRegistry() string {
 	keys := []struct {
 		root  registry.Key
 		path  string
@@ -113,14 +115,15 @@ func checkVMRegistry() bool {
 		upper := strings.ToUpper(text)
 		for _, token := range vmTokens {
 			if strings.Contains(upper, token) {
-				return true
+				return token
 			}
 		}
 	}
-	return false
+	return ""
 }
 
-func checkVMDrivers() bool {
+// checkVMDrivers returns the first matched VM driver file name ("" when none).
+func checkVMDrivers() string {
 	sysRoot := os.Getenv(`SystemRoot`)
 	if sysRoot == `` {
 		sysRoot = `C:\Windows`
@@ -128,22 +131,23 @@ func checkVMDrivers() bool {
 	driversDir := filepath.Join(sysRoot, `System32`, `drivers`)
 	for _, name := range strings.Split(obfuscate.ANTI_VM_DRIVERS(), ",") {
 		if _, err := os.Stat(filepath.Join(driversDir, name)); err == nil {
-			return true
+			return name
 		}
 	}
-	return false
+	return ""
 }
 
-func checkSandboxDLL() bool {
+// checkSandboxDLL returns the first injected sandbox DLL name ("" when none).
+func checkSandboxDLL() string {
 	modules := strings.Split(obfuscate.ANTI_SANDBOX_DLLS(), ",")
 	h, err := windows.GetCurrentProcess()
 	if err != nil {
-		return false
+		return ""
 	}
 	var mods [1024]windows.Handle
 	var needed uint32
 	if err := windows.EnumProcessModules(h, &mods[0], uint32(len(mods)*int(unsafe.Sizeof(mods[0]))), &needed); err != nil {
-		return false
+		return ""
 	}
 	count := int(needed) / int(unsafe.Sizeof(mods[0]))
 	if count > len(mods) {
@@ -157,11 +161,11 @@ func checkSandboxDLL() bool {
 		name := strings.ToLower(windows.UTF16ToString(buf))
 		for _, mod := range modules {
 			if name == mod {
-				return true
+				return name
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 // timingAnomaly returns true if the execution time of a tight loop is

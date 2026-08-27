@@ -1,13 +1,13 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/images/iconhtml.png" type="image/png">
     <title>Сканы — Clover</title>
-    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <link rel="stylesheet" href="/vendor/phosphor/style.css">
+    <link rel="stylesheet" href="/vendor/fonts.css">
     <link rel="stylesheet" href="/css/clover.css">
 </head>
 <body>
@@ -26,6 +26,7 @@
                 <a href="/signatures" class="side-item"><i class="ph ph-fingerprint"></i>Сигнатуры</a>
                 <p class="sidebar-section" id="adminSection" style="display:none">Управление</p>
                 <a href="/admin" id="adminLink" style="display:none" class="side-item"><i class="ph ph-shield-star"></i>Пользователи</a>
+                <a href="/settings" id="settingsLink" style="display:none" class="side-item"><i class="ph ph-sliders-horizontal"></i>Настройки</a>
             </nav>
             <div class="sidebar-user">
                 <span class="avatar" id="userAvatar">·</span>
@@ -58,12 +59,13 @@
                     </h2>
                     <div class="flex gap-3 mb-3 flex-wrap">
                         <input type="text" id="linkNote" placeholder="Заметка: ник игрока, команда" class="flex-1 min-w-[220px]" onkeydown="if(event.key==='Enter')createLink()">
+                        <input type="number" id="linkCount" min="1" max="50" value="1" title="Количество ссылок (пакетная проверка)" class="w-20">
                         <button onclick="createLink()" id="createLinkBtn" class="btn btn-primary">
                             <i class="ph ph-plus"></i>
                             Сгенерировать команду
                         </button>
                     </div>
-                    <p class="text-emerald-100/40 text-xs">Пароль генерируется автоматически. Clover удалит сам себя после сканирования.</p>
+                    <p class="text-emerald-100/40 text-xs">Пароль генерируется автоматически. Clover удалит сам себя после сканирования. Укажите количество &gt; 1 для пакетной выдачи ссылок всей команде.</p>
                     <div id="linkResult" class="empty:hidden mt-4"></div>
                 </div>
 
@@ -90,6 +92,46 @@
                             </thead>
                             <tbody id="linksBody"></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Турнирный режим -->
+                <div class="panel mt-5">
+                    <div class="px-5 py-4 border-b border-emerald-300/10">
+                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-trophy text-emerald-300"></i>
+                            Турнирное событие
+                        </h2>
+                        <p class="text-emerald-100/40 text-xs mt-1">Пакет ссылок для всех участников + публичная страница с живым статусом «кто прошёл проверку».</p>
+                    </div>
+                    <div class="p-5">
+                        <div class="flex gap-3 flex-wrap items-center">
+                            <input type="text" id="eventName" placeholder="Название: турнир 5x5, квалификация…" class="flex-1 min-w-[220px]">
+                            <input type="number" id="eventCount" min="2" max="50" value="10" title="Число участников" class="w-24">
+                            <button onclick="createEvent()" class="btn btn-primary"><i class="ph ph-trophy"></i> Создать событие</button>
+                        </div>
+                        <div id="eventResult" class="empty:hidden mt-4"></div>
+                        <div id="eventsList" class="mt-4"></div>
+                    </div>
+                </div>
+
+                <!-- Регулярные проверки -->
+                <div class="panel mt-5">
+                    <div class="px-5 py-4 border-b border-emerald-300/10">
+                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
+                            <i class="ph ph-arrows-clockwise text-emerald-300"></i>
+                            Регулярные проверки
+                        </h2>
+                        <p class="text-emerald-100/40 text-xs mt-1">Игроки, обязанные проходить проверку раз в N дней. Просроченные подсвечиваются.</p>
+                    </div>
+                    <div class="p-5">
+                        <div class="flex gap-3 flex-wrap items-center mb-4">
+                            <input type="text" id="wlSteamId" placeholder="SteamID64 (7656…)" class="mono text-xs flex-1 min-w-[200px]">
+                            <input type="text" id="wlName" placeholder="Ник" class="w-40">
+                            <input type="number" id="wlDays" min="1" max="90" value="7" title="Интервал в днях" class="w-24">
+                            <button onclick="addWatch()" class="btn btn-secondary"><i class="ph ph-plus"></i> Добавить</button>
+                        </div>
+                        <div id="watchBody"></div>
                     </div>
                 </div>
             </div>
@@ -126,6 +168,14 @@
                     <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">За 24 часа</div><div id="stat24h" class="stat-num mt-2 text-emerald-300">—</div></div>
                     <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">С находками</div><div id="statFlagged" class="stat-num mt-2 text-rose-300">—</div></div>
                     <div class="panel p-4"><div class="text-emerald-100/40 text-xs uppercase tracking-wider">Чистые</div><div id="statClean" class="stat-num mt-2 text-lime-300">—</div></div>
+                </div>
+                <div class="panel p-4 mb-5" id="scanChartPanel" style="display:none">
+                    <div class="text-emerald-100/40 text-xs uppercase tracking-wider mb-3">Активность за 14 дней</div>
+                    <div id="scanChart"></div>
+                    <div class="flex gap-4 mt-2 text-xs text-emerald-100/40">
+                        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--emerald)"></span> чистые</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--danger)"></span> с находками</span>
+                    </div>
                 </div>
                 <div class="panel">
                     <div class="px-5 py-4 border-b border-emerald-300/10 flex items-center justify-between gap-3 flex-wrap">
@@ -178,37 +228,21 @@
 
     <div id="toast"></div>
 
+    <!-- QR-модалка для ссылок игрокам -->
+    <div id="qrModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeQr()">
+        <div class="modal-card p-6 flex flex-col items-center gap-3">
+            <div id="qrBox" class="bg-white p-3 rounded-lg"></div>
+            <p class="mono text-xs text-emerald-100/50 break-all max-w-xs text-center" id="qrUrl"></p>
+            <button class="btn btn-ghost btn-sm" onclick="closeQr()"><i class="ph ph-x"></i> Закрыть</button>
+        </div>
+    </div>
+
+    <script src="/vendor/qrcode.js"></script>
     <script src="/js/session.js"></script>
+    <script src="/js/ui.js"></script>
     <script>
         let currentTab = 'links';
         let currentUser = {};
-
-        function toast(msg, type) {
-            const el = document.createElement('div');
-            el.className = 'toast-item toast-' + (type || 'success');
-            el.textContent = msg;
-            document.getElementById('toast').appendChild(el);
-            setTimeout(() => el.remove(), 4000);
-        }
-
-        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-        function authHeaders() {
-            const u = JSON.parse(localStorage.getItem('user') || '{}');
-            return u.sessionToken ? { 'Authorization': 'Bearer ' + u.sessionToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-        }
-
-        async function logout() {
-            try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch (_) {}
-            localStorage.removeItem('user');
-            window.location.href = '/auth';
-        }
-
-        function fmtDate(s) {
-            if (!s) return '-';
-            // timestamp is Unix milliseconds; use the browser/OS locale (same as on PC)
-            try { return new Date(s).toLocaleString(); } catch (_) { return s; }
-        }
 
         function hitCount(rec) {
             const flagged = (arr) => (arr || []).filter(x => x.matched || x.flag).length;
@@ -216,16 +250,8 @@
             const cleanupHits = (c.iniOnDisk||[]).length + (c.iniDeleted||[]).length + (c.prefetchTools||[]).length + (c.journals||[]).filter(j => j.wiped).length;
             return (rec.results?.length||0) + (rec.deletedFiles?.length||0) + (rec.cs2Conns?.length||0) + (rec.cs2Rwx?.length||0) + (rec.dirs?.length||0) + (rec.namedFiles?.length||0)
                 + flagged(rec.prefetch) + flagged(rec.shimcache) + flagged(rec.bam) + flagged(rec.processes) + flagged(rec.drivers)
+                + flagged(rec.execTraces) + flagged(rec.windows) + (rec.envFlags || []).length
                 + flagged(rec.shellbagsAll) + (rec.usn||[]).filter(x => x.m).length + cleanupHits;
-        }
-
-        function fmtTs(v) {
-            if (!v) return '-';
-            const d = new Date(v);
-            if (isNaN(d)) return '-';
-            // Avoid showing zero/epoch dates (1970) as valid timestamps.
-            if (d.getFullYear() < 2000) return '-';
-            return d.toLocaleString();
         }
 
         function cleanSerial(v) {
@@ -268,9 +294,12 @@
                 if ((currentUser.level || 0) >= 5) {
                     document.getElementById('adminLink').style.display = '';
                     document.getElementById('adminSection').style.display = '';
+                    document.getElementById('settingsLink').style.display = '';
                 }
 
                 loadLinks();
+                loadEvents();
+                loadWatchlist();
             } catch (e) {
                 window.location.href = '/auth?next=/scans';
             }
@@ -280,9 +309,29 @@
         async function createLink() {
             const note = document.getElementById('linkNote').value.trim();
             if (!note) { toast('Введите заметку', 'error'); return; }
-            const res = await fetch('/api/scans/links', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ note }) });
+            const count = Math.min(Math.max(1, parseInt(document.getElementById('linkCount').value, 10) || 1), 50);
+            const res = await fetch('/api/scans/links', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ note, count }) });
             if (!res.ok) { toast('Ошибка создания ссылки', 'error'); return; }
             const data = await res.json();
+            // Пакетный режим: сервер вернул массив ссылок — показываем список URL+QR.
+            if (Array.isArray(data.links)) {
+                document.getElementById('linkResult').innerHTML = `
+                    <div class="panel-2 p-4">
+                        <p class="text-white font-semibold mb-3 flex items-center gap-2"><i class="ph ph-users-three text-emerald-300"></i>Создано ссылок: ${data.links.length}</p>
+                        <div class="space-y-2">${data.links.map((l, i) => `
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <span class="mono text-xs text-emerald-100/40 w-8">#${i + 1}</span>
+                                <span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword)}')">${esc(l.playerPassword)}</span>
+                                <span class="mono text-xs text-emerald-100/60 flex-1 min-w-[200px] truncate">${esc(l.playerUrl)}</span>
+                                <button class="btn btn-secondary btn-sm" onclick="copyText('${l.playerUrl}')"><i class="ph ph-copy"></i> Ссылка</button>
+                                <button class="btn btn-ghost btn-sm" onclick="showQr('${l.playerUrl}')" title="QR-код"><i class="ph ph-qr-code"></i></button>
+                            </div>`).join('')}
+                        </div>
+                    </div>`;
+                loadLinks();
+                toast('Создано ссылок: ' + data.links.length);
+                return;
+            }
             const link = data.link;
             const cmd = data.cmdCommand;
             const ps = data.psCommand;
@@ -356,6 +405,9 @@
             const body = document.getElementById('linksBody');
             if (!data.links || data.links.length === 0) { body.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="ph ph-link-simple"></i>Нет активных ссылок — создайте первую выше</div></td></tr>'; return; }
             const origin = location.origin;
+            // Команды храним в JS-мапе, а не встраиваем в onclick: кавычки и
+            // бэкслеши внутри PowerShell-команды ломали бы inline-обработчик.
+            window.__linkCmds = {};
             body.innerHTML = data.links.map(l => {
                 const remaining = (l.expiresAt || 0) - Date.now();
                 const expired = remaining <= 0;
@@ -367,13 +419,14 @@
                 const dlUrlB64 = origin + '/api/scans/download-b64/' + l.id + '?p=' + encodeURIComponent(l.playerPassword || '');
                 const cmd = 'curl -sL "' + dlUrl + '" -o "%TEMP%\\' + rndName + '" && "%TEMP%\\' + rndName + '" && del /f "%TEMP%\\' + rndName + '" >nul 2>&1';
                 const ps = 'powershell -c "$r=iwr -UseBasicParsing -uri \'' + dlUrlB64 + '\'; $j=$r.Content|ConvertFrom-Json; $b=[Convert]::FromBase64String($j.base64); $fn=$j.name; $p=$env:TEMP+\'\\\'+$fn; [IO.File]::WriteAllBytes($p,$b); if ($b[0]-ne 77 -or $b[1]-ne 90) { throw \"Invalid PE header\" }; $pe=[BitConverter]::ToInt32($b,0x3C); if ([BitConverter]::ToUInt16($b,$pe+4)-ne 0x8664) { throw \"Not x64 binary\" }; & $p; del $p -ErrorAction SilentlyContinue"';
+                window.__linkCmds[l.id] = { ps, cmd };
                 return `
                 <tr class="border-b border-emerald-300/10">
                     <td class="py-3 px-5">${esc(l.note)}</td>
                     <td class="py-3 px-3 mono text-xs text-emerald-100/50">${esc(l.adminDisplayName || l.adminUser || '-')}</td>
                     <td class="py-3 px-3"><span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword || '')}')">${esc(l.playerPassword || '—')}</span></td>
                     <td class="py-3 px-3">${expiryBadge}</td>
-                    <td class="py-3 px-3"><div class="flex gap-2"><button onclick="copyLinkCmd('${esc(ps)}')" class="btn btn-primary btn-sm"><i class="ph ph-terminal"></i> PowerShell</button><button onclick="copyLinkCmd('${esc(cmd)}')" class="btn btn-secondary btn-sm"><i class="ph ph-terminal"></i> CMD</button></div></td>
+                    <td class="py-3 px-3"><div class="flex gap-2"><button onclick="copyLinkCmd('${l.id}','ps')" class="btn btn-primary btn-sm"><i class="ph ph-terminal"></i> PowerShell</button><button onclick="copyLinkCmd('${l.id}','cmd')" class="btn btn-secondary btn-sm"><i class="ph ph-terminal"></i> CMD</button><button onclick="showQr(location.origin + '/scan?id=${l.id}')" class="btn btn-ghost btn-icon btn-sm" title="QR на страницу игрока"><i class="ph ph-qr-code"></i></button></div></td>
                     <td class="py-3 px-3"><button onclick="deleteLink('${l.id}')" class="btn btn-danger btn-icon btn-sm" title="Удалить ссылку"><i class="ph ph-trash"></i></button></td>
                 </tr>`;
             }).join('');
@@ -383,12 +436,120 @@
             navigator.clipboard.writeText(text).then(() => toast('Скопировано в буфер')).catch(() => {});
         }
 
-        function copyLinkCmd(cmd) {
-            navigator.clipboard.writeText(cmd).then(() => toast('CMD команда скопирована')).catch(() => {
+        // QR-код страницы игрока — удобно показать игроку с экрана.
+        function showQr(url) {
+            const box = document.getElementById('qrBox');
+            box.innerHTML = '';
+            const qr = qrcode(0, 'M');
+            qr.addData(url);
+            qr.make();
+            box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+            document.getElementById('qrUrl').textContent = url;
+            document.getElementById('qrModal').classList.remove('hidden');
+        }
+        function closeQr() { document.getElementById('qrModal').classList.add('hidden'); }
+
+        // ─── Турнирный режим ──────────────────────────────────────────────
+        async function createEvent() {
+            const name = document.getElementById('eventName').value.trim();
+            if (!name) { toast('Введите название события', 'error'); return; }
+            const count = Math.min(Math.max(2, parseInt(document.getElementById('eventCount').value, 10) || 10), 50);
+            const res = await fetch('/api/scans/events', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name, count }) });
+            if (!res.ok) { toast('Ошибка создания события', 'error'); return; }
+            const data = await res.json();
+            document.getElementById('eventResult').innerHTML = `
+                <div class="panel-2 p-4">
+                    <p class="text-white font-semibold mb-2 flex items-center gap-2"><i class="ph ph-trophy text-emerald-300"></i>${esc(data.event.name)}</p>
+                    <p class="text-xs text-emerald-100/40 mb-3">Публичная страница статуса:</p>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <input type="text" value="${esc(data.eventUrl)}" readonly class="flex-1 mono text-xs bg-black/30 cursor-pointer min-w-[200px]" onclick="this.select()">
+                        <button class="btn btn-secondary btn-sm" onclick="copyText('${data.eventUrl}')"><i class="ph ph-copy"></i></button>
+                        <button class="btn btn-ghost btn-sm" onclick="showQr('${data.eventUrl}')" title="QR"><i class="ph ph-qr-code"></i></button>
+                        <a class="btn btn-ghost btn-sm" href="/event/${data.event.id}" target="_blank" rel="noopener"><i class="ph ph-arrow-square-out"></i></a>
+                    </div>
+                    <p class="text-xs text-emerald-100/40 mt-3 mb-2">Ссылки участникам (${data.links.length}):</p>
+                    <div class="space-y-2">${data.links.map((l, i) => `
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <span class="mono text-xs text-emerald-100/40 w-8">#${i + 1}</span>
+                            <span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword)}')">${esc(l.playerPassword)}</span>
+                            <span class="mono text-xs text-emerald-100/60 flex-1 min-w-[180px] truncate">${esc(l.playerUrl)}</span>
+                            <button class="btn btn-secondary btn-sm" onclick="copyText('${l.playerUrl}')"><i class="ph ph-copy"></i></button>
+                        </div>`).join('')}
+                    </div>
+                </div>`;
+            loadLinks();
+            loadEvents();
+            toast('Событие создано');
+        }
+
+        async function loadEvents() {
+            const res = await fetch('/api/scans/events', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const box = document.getElementById('eventsList');
+            if (!data.events || !data.events.length) { box.innerHTML = ''; return; }
+            box.innerHTML = '<p class="text-xs text-emerald-100/40 uppercase tracking-wider mb-2">Прошлые события</p>' +
+                data.events.map(e => `
+                    <div class="flex items-center gap-3 py-2 border-b border-emerald-300/10">
+                        <i class="ph ph-trophy text-emerald-100/40"></i>
+                        <span class="text-sm text-white font-semibold">${esc(e.name)}</span>
+                        <span class="text-xs text-emerald-100/40">${fmtDate(e.createdAt)}</span>
+                        <a class="btn btn-ghost btn-sm ml-auto" href="/event/${e.id}" target="_blank" rel="noopener"><i class="ph ph-arrow-square-out"></i> Страница</a>
+                        <button class="btn btn-ghost btn-sm" onclick="copyText(location.origin + '/event/${e.id}')" title="Копировать ссылку"><i class="ph ph-copy"></i></button>
+                    </div>`).join('');
+        }
+
+        // ─── Регулярные проверки (watchlist) ──────────────────────────────
+        let WATCH = [];
+        async function loadWatchlist() {
+            const res = await fetch('/api/scans/watchlist', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            WATCH = data.watchlist || [];
+            renderWatchlist();
+        }
+        function renderWatchlist() {
+            const box = document.getElementById('watchBody');
+            if (!WATCH.length) { box.innerHTML = '<div class="empty-state"><i class="ph ph-user-clock"></i>Список пуст — добавьте первого игрока</div>'; return; }
+            box.innerHTML = WATCH.map((w, i) => {
+                const last = w.lastScan ? fmtDate(w.lastScan.timestamp) : 'никогда';
+                const badge = w.overdue ? '<span class="tag tag-red">просрочена</span>' : '<span class="tag tag-green">в порядке</span>';
+                const vtag = w.lastScan && w.lastScan.verdict ? ` <span class="tag ${w.lastScan.verdict.level === 'clean' ? 'tag-green' : (w.lastScan.verdict.level === 'flagged' ? 'tag-red' : 'tag-amber')}">${w.lastScan.verdict.level}</span>` : '';
+                return `<div class="flex items-center gap-3 py-2 border-b border-emerald-300/10 ${w.overdue ? 'bg-rose-500/5' : ''}">
+                    <span class="mono text-xs">${esc(w.steamId)}</span>
+                    <span class="text-sm text-white">${esc(w.name || '')}</span>${vtag}
+                    <span class="text-xs text-emerald-100/40 ml-auto">раз в ${w.intervalDays} дн. · последняя: ${last}</span>
+                    ${badge}
+                    <button class="btn btn-danger btn-icon btn-sm" title="Убрать" onclick="removeWatch(${i})"><i class="ph ph-x"></i></button>
+                </div>`;
+            }).join('');
+        }
+        async function saveWatchlist() {
+            const res = await fetch('/api/scans/watchlist', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ watchlist: WATCH }) });
+            if (!res.ok) { toast('Ошибка сохранения', 'error'); return; }
+            const data = await res.json();
+            WATCH = data.watchlist || [];
+            renderWatchlist();
+        }
+        function addWatch() {
+            const steamId = document.getElementById('wlSteamId').value.trim();
+            if (!/^\d{10,20}$/.test(steamId)) { toast('SteamID64: 10-20 цифр', 'error'); return; }
+            WATCH.push({ steamId, name: document.getElementById('wlName').value.trim(), intervalDays: parseInt(document.getElementById('wlDays').value, 10) || 7 });
+            document.getElementById('wlSteamId').value = '';
+            document.getElementById('wlName').value = '';
+            saveWatchlist().then(() => toast('Добавлено'));
+        }
+        function removeWatch(i) { WATCH.splice(i, 1); saveWatchlist(); }
+
+        function copyLinkCmd(linkId, kind) {
+            const entry = (window.__linkCmds || {})[linkId];
+            const cmd = entry && entry[kind];
+            if (!cmd) return;
+            navigator.clipboard.writeText(cmd).then(() => toast(kind === 'ps' ? 'PowerShell команда скопирована' : 'CMD команда скопирована')).catch(() => {
                 const ta = document.createElement('textarea');
                 ta.value = cmd; document.body.appendChild(ta); ta.select();
                 document.execCommand('copy'); document.body.removeChild(ta);
-                toast('CMD команда скопирована');
+                toast('Команда скопирована');
             });
         }
 
@@ -450,6 +611,33 @@
             document.getElementById('stat24h').textContent = s.last24h ?? '0';
             document.getElementById('statFlagged').textContent = s.flagged ?? '0';
             document.getElementById('statClean').textContent = s.clean ?? '0';
+            renderScanChart(s.perDay || []);
+        }
+
+        // SVG-столбчатый график без внешних библиотек: зелёная часть — чистые,
+        // красная — с находками. Высота нормируется на максимум за период.
+        function renderScanChart(perDay) {
+            const panel = document.getElementById('scanChartPanel');
+            const box = document.getElementById('scanChart');
+            if (!perDay.length || perDay.every(d => !d.total)) { panel.style.display = 'none'; return; }
+            panel.style.display = '';
+            const W = 700, H = 120, PAD = 4;
+            const max = Math.max(...perDay.map(d => d.total), 1);
+            const bw = (W - PAD * 2) / perDay.length;
+            const bars = perDay.map((d, i) => {
+                const x = PAD + i * bw;
+                const w = Math.max(bw - 6, 4);
+                const hAll = Math.round((d.total / max) * (H - 26));
+                const hBad = Math.round((d.flagged / max) * (H - 26));
+                const hGood = hAll - hBad;
+                const yBase = H - 18;
+                return `<g>
+                    <rect x="${x + 3}" y="${yBase - hAll}" width="${w}" height="${hAll}" rx="3" fill="var(--emerald)" opacity="0.85"><title>${esc(d.day)}: ${d.total} проверок</title></rect>
+                    ${hBad > 0 ? `<rect x="${x + 3}" y="${yBase - hBad}" width="${w}" height="${hBad}" rx="3" fill="var(--danger)"><title>${esc(d.day)}: ${d.flagged} с находками</title></rect>` : ''}
+                    <text x="${x + 3 + w / 2}" y="${H - 4}" text-anchor="middle" font-size="9" fill="var(--text-faint)">${esc(d.day)}</text>
+                </g>`;
+            }).join('');
+            box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:140px" role="img" aria-label="График проверок за 14 дней">${bars}</svg>`;
         }
 
         async function loadScans() {
@@ -489,7 +677,18 @@
             el.innerHTML = '<table class="w-full"><thead><tr class="border-b border-emerald-300/10"><th class="text-left py-2 px-3">Время</th><th class="text-left py-2 px-3">Админ</th><th class="text-left py-2 px-3">Хост</th><th class="text-left py-2 px-3">SteamID</th><th class="text-left py-2 px-3">Находки</th><th></th></tr></thead><tbody>' +
                 data.scans.map(s => {
                     const hits = hitCount(s);
-                    const badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
+                let badge = hits > 0 ? `<span class="tag tag-red">${hits}</span>` : '<span class="tag tag-green">чисто</span>';
+                // Авто-вердикт (score по эвристикам) и админ-статус — приоритетнее сырого счётчика.
+                if (s.verdict && s.verdict.level) {
+                    const vmap = { clean: ['tag-green', 'чисто'], suspicious: ['tag-amber', 'подозр.'], flagged: ['tag-red', 'находки'] };
+                    const [cls, txt] = vmap[s.verdict.level] || vmap.suspicious;
+                    badge = `<span class="tag ${cls}" title="score ${s.verdict.score}">${txt} · ${s.verdict.score}</span>`;
+                }
+                if (s.adminStatus) {
+                    const smap = { review: ['tag-amber', 'на рассмотрении'], banned: ['tag-red', 'бан'], cleared: ['tag-green', 'оправдан'] };
+                    const sm = smap[s.adminStatus];
+                    if (sm) badge += ` <span class="tag ${sm[0]}">${sm[1]}</span>`;
+                }
                     return `<tr class="border-b border-emerald-300/10 cursor-pointer" onclick="viewScan('${s.scanId}')"><td class="py-3 px-3 text-emerald-100/40 text-xs">${fmtDate(s.timestamp)}</td><td class="py-3 px-3 mono text-xs text-emerald-100/50">${esc(s.adminDisplayName || s.adminUser || '-')}</td><td class="py-3 px-3 text-sm">${esc(s.hardware?.hostname || '-')}</td><td class="py-3 px-3 mono text-xs">${esc((s.steam?.accounts||[]).map(a=>a.steamId).join(', ')||'-')}</td><td class="py-3 px-3">${badge}</td><td class="py-3 px-3"><i class="ph ph-eye text-emerald-100/50"></i></td></tr>`;
                 }).join('') + '</tbody></table>';
         }

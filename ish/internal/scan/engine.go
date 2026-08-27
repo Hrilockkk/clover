@@ -57,6 +57,9 @@ type Engine struct {
 	cleanerDeleted  []models.DeletedIniFinding
 	cleanup         *models.CleanupInfo
 	usnHistory      []models.UsnEntry
+	execTraces      []models.ExecTraceEntry
+	openWindows     []models.WindowEntry
+	envFlags        []string
 	// resolvers holds the per-drive MFT node maps built during the index
 	// phase; the USN history collector reuses them for path resolution.
 	resolvers       map[string]*ntfs.PathResolver
@@ -161,7 +164,30 @@ func (e *Engine) Results() (results []models.FileInfo, dirResults []models.DirIn
 		extra.USNHistory = make([]models.UsnEntry, len(e.usnHistory))
 		copy(extra.USNHistory, e.usnHistory)
 	}
+	if len(e.execTraces) > 0 {
+		extra.ExecTraces = make([]models.ExecTraceEntry, len(e.execTraces))
+		copy(extra.ExecTraces, e.execTraces)
+	}
+	if len(e.openWindows) > 0 {
+		extra.Windows = make([]models.WindowEntry, len(e.openWindows))
+		copy(extra.Windows, e.openWindows)
+	}
+	if len(e.envFlags) > 0 {
+		extra.EnvFlags = make([]string, len(e.envFlags))
+		copy(extra.EnvFlags, e.envFlags)
+	}
 	return
+}
+
+// SetEnvFlags stores the analysis-environment signals detected at startup
+// (VM / sandbox) so they end up in the upload payload.
+func (e *Engine) SetEnvFlags(flags []string) {
+	if len(flags) == 0 {
+		return
+	}
+	e.mu.Lock()
+	e.envFlags = append(e.envFlags, flags...)
+	e.mu.Unlock()
 }
 
 // Stats returns live counters for the progress UI.
@@ -564,12 +590,53 @@ func (e *Engine) ScanProcesses() {
 	fmt.Fprintf(os.Stderr, "[PROCESSES] %d running, %d matched\n", len(entries), matched)
 }
 
-// ScanDrivers enumerates installed kernel/fs drivers with blacklist/recent flags.
+// ScanExecTraces collects the additional program-execution artifacts
+// (UserAssist, RecentApps, AppSwitched, MuiCache, AppCompat Store, RunMRU,
+// ComDlg32, PCA). These survive Prefetch/ShimCache cleanup attempts.
+func (e *Engine) ScanExecTraces() {
+	entries := winapi.CollectExecTraces(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, t := range entries {
+		if t.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.execTraces = append(e.execTraces, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[EXECTRACES] %d entries, %d matched\n", len(entries), matched)
+}
+
+// ScanWindows enumerates visible top-level windows (ESP overlay detection).
+func (e *Engine) ScanWindows() {
+	entries := winapi.CollectWindows(e.collectorTargetNames())
+	if len(entries) == 0 {
+		return
+	}
+	matched := 0
+	for _, w := range entries {
+		if w.Matched != "" {
+			matched++
+		}
+	}
+	e.mu.Lock()
+	e.openWindows = append(e.openWindows, entries...)
+	e.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "[WINDOWS] %d windows, %d matched\n", len(entries), matched)
+}
+
+// ScanDrivers enumerates installed kernel/fs drivers with blacklist/recent
+// flags, then verifies Authenticode signatures of non-stock drivers
+// (unsigned/self-signed kernel code is a classic cheat-loading vector).
 func (e *Engine) ScanDrivers() {
 	entries := winapi.CollectDrivers(e.cfg.DriverBlacklist)
 	if len(entries) == 0 {
 		return
 	}
+	winapi.FlagUnsignedDrivers(entries)
 	flagged := 0
 	for _, d := range entries {
 		if d.Flag != "" {

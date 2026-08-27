@@ -101,6 +101,14 @@ CREATE TABLE IF NOT EXISTS settings (
     "key" TEXT PRIMARY KEY,
     "value" TEXT NOT NULL
 );
+
+-- Турнирные события: пакет ссылок + публичная страница живого статуса.
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL
+);
 `;
 
 // Эпохи хранятся в миллисекундах (Date.now()) — в int4 PostgreSQL они не
@@ -160,6 +168,14 @@ async function saveScanRecord(rec) {
     return Number(changes) > 0;
 }
 
+// updateScanRecord перезаписывает payload существующей записи — нужен для
+// админ-метаданных (статус проверки, заметки), живущих внутри JSON-блоба.
+async function updateScanRecord(rec) {
+    if (!rec || !rec.scanId) throw new Error('scan record without scanId');
+    const changes = await sql.run('UPDATE scans SET payload = ? WHERE id = ?', [JSON.stringify(rec), String(rec.scanId)]);
+    return Number(changes) > 0;
+}
+
 async function getScanRecord(id) {
     const row = await sql.get('SELECT payload FROM scans WHERE id = ?', [String(id)]);
     if (!row) return null;
@@ -195,6 +211,9 @@ async function listScanSummaries(limit) {
         try {
             const rec = JSON.parse(row.payload || '{}');
             summary.hitCount = (rec.results?.length || 0) + (rec.deletedFiles?.length || 0) + (rec.dirs?.length || 0) + (rec.namedFiles?.length || 0) + (rec.cs2Conns?.length || 0) + (rec.cs2Rwx?.length || 0);
+            // Авто-вердикт (scans.computeVerdict) и админ-статус для бейджей в списке.
+            if (rec.verdict) summary.verdict = rec.verdict;
+            if (rec.adminMeta && rec.adminMeta.status) summary.adminStatus = rec.adminMeta.status;
         } catch (_) { summary.hitCount = 0; }
         return summary;
     });
@@ -219,6 +238,63 @@ async function searchScanSummaries(q, limit) {
         LIMIT ?
     `, [like, like, like, like, like, like, like, lim]);
     return rows.map(scanSummary);
+}
+
+// ─── Events (турнирный режим) ───────────────────────────────────────────────
+
+async function createEvent({ id, name, createdBy }) {
+    await sql.run('INSERT INTO events (id, name, created_by, created_at) VALUES (?, ?, ?, ?)',
+        [String(id), String(name).slice(0, 200), String(createdBy || ''), Date.now()]);
+    return { id, name };
+}
+
+async function getEvent(id) {
+    return sql.get('SELECT * FROM events WHERE id = ?', [String(id)]);
+}
+
+async function listEvents() {
+    const rows = await sql.all('SELECT * FROM events ORDER BY created_at DESC LIMIT 200');
+    return rows.map(r => ({ id: r.id, name: r.name, createdBy: r.created_by, createdAt: Number(r.created_at) }));
+}
+
+// Статус события: сколько ссылок выдано и сколько сканов загружено.
+// Скан «принадлежит» событию через link_id (ссылки события — файлы с eventId).
+async function getEventStatus(id, eventLinkIds) {
+    const checks = await Promise.all((eventLinkIds || []).map(async linkId => {
+        const row = await sql.get('SELECT id, "timestamp", hostname, payload FROM scans WHERE link_id = ?', [String(linkId)]);
+        if (!row) return { linkId, done: false };
+        let verdict = null;
+        try { verdict = JSON.parse(row.payload || '{}').verdict || null; } catch (_) {}
+        return { linkId, done: true, scanId: row.id, timestamp: Number(row.timestamp), hostname: row.hostname || '', verdict: verdict ? { level: verdict.level, score: verdict.score } : null };
+    }));
+    return checks;
+}
+
+// Сканы, загруженные по ссылкам события: eventId живёт в payload
+// (записывается при аплоаде, когда ссылка ещё существует).
+async function getScansByEventId(eventId) {
+    const like = '%"eventId":"' + String(eventId).replace(/[%_"\\]/g, '') + '"%';
+    const rows = await sql.all(`SELECT id, link_id, "timestamp", hostname, payload FROM scans WHERE payload LIKE ? ORDER BY "timestamp" DESC LIMIT 500`, [like]);
+    return rows.map(row => {
+        let verdict = null;
+        try { verdict = JSON.parse(row.payload || '{}').verdict || null; } catch (_) {}
+        return { scanId: row.id, linkId: row.link_id, timestamp: Number(row.timestamp), hostname: row.hostname || '', verdict: verdict ? { level: verdict.level, score: verdict.score } : null };
+    });
+}
+
+// Последний скан по SteamID — для Trust Badge и watchlist.
+async function getLatestScanBySteamId(steamId) {
+    const like = '%' + String(steamId).replace(/[%_]/g, c => '\\' + c) + '%';
+    const row = await sql.get(`SELECT id, "timestamp", hostname, payload FROM scans WHERE steam_ids LIKE ? ESCAPE '\\' ORDER BY "timestamp" DESC LIMIT 1`, [like]);
+    if (!row) return null;
+    let verdict = null;
+    try { verdict = JSON.parse(row.payload || '{}').verdict || null; } catch (_) {}
+    return {
+        scanId: row.id,
+        timestamp: Number(row.timestamp),
+        hostname: row.hostname || '',
+        verdict: verdict ? { level: verdict.level, score: verdict.score } : null
+    };
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
@@ -379,11 +455,12 @@ async function seedAdmin() {
 
 module.exports = {
     initSchema,
-    saveScanRecord, getScanRecord,
+    saveScanRecord, getScanRecord, updateScanRecord,
     getScanSummary,
     listScanSummaries,
     searchScanSummaries, countScanRecords,
     getSetting, setSetting,
+    createEvent, getEvent, listEvents, getEventStatus, getScansByEventId, getLatestScanBySteamId,
     getUserById, getUserByUsername, createUser, checkCredentials, hashPassword,
     listUsers, updateUser, setUserPassword, deleteUser, countUsers,
     createSession, getSessionByToken, deleteSession, deleteUserSessions,

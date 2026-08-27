@@ -434,3 +434,92 @@ tbody tr:hover { background: rgba(110, 231, 183, 0.04); }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ==========================================================================
+   Светлая тема — те же токены, перевёрнутая палитра. Акцент остаётся
+   изумрудным, но затемнён для читаемости на светлом фоне.
+   ========================================================================== */
+[data-theme="light"] {
+    --bg: #eef5f0;
+    --surface: #ffffff;
+    --surface-2: #f2f7f4;
+    --surface-3: #e5efe9;
+    --border: rgba(6, 78, 59, 0.12);
+    --border-strong: rgba(6, 78, 59, 0.24);
+    --text: #122019;
+    --text-dim: rgba(18, 32, 25, 0.68);
+    --text-faint: rgba(18, 32, 25, 0.45);
+    --emerald: #059669;
+    --emerald-deep: #047857;
+    --mint: #047857;
+    --lime: #65a30d;
+    --danger: #dc2626;
+    --amber: #d97706;
+    --shadow-pop: 0 16px 42px rgba(6, 40, 26, 0.18);
+    --shadow-soft: 0 8px 24px rgba(6, 40, 26, 0.08);
+}
+[data-theme="light"] body {
+    background: var(--bg);
+    scrollbar-color: rgba(6, 78, 59, 0.25) transparent;
+}
+[data-theme="light"] body::-webkit-scrollbar-thumb { background: rgba(6, 78, 59, 0.25); }
+[data-theme="light"] .panel {
+    background: var(--surface);
+    border-color: var(--border);
+}
+[data-theme="light"] .brand-text,
+[data-theme="light"] .page-title,
+[data-theme="light"] .stat-num { color: var(--text); }
+[data-theme="light"] tbody tr:hover { background: rgba(5, 150, 105, 0.06); }
+[data-theme="light"] .copy-cell:hover { background: rgba(5, 150, 105, 0.10); }
+[data-theme="light"] .side-item.active { background: rgba(5, 150, 105, 0.10); color: var(--mint); }
+[data-theme="light"] .tag-em, [data-theme="light"] .tag-green { background: rgba(5, 150, 105, 0.10); color: #047857; border-color: rgba(5, 150, 105, 0.25); }
+[data-theme="light"] .tag-lime { background: rgba(101, 163, 13, 0.10); color: #4d7c0f; border-color: rgba(101, 163, 13, 0.25); }
+[data-theme="light"] .tag-amber { background: rgba(217, 119, 6, 0.10); color: #b45309; border-color: rgba(217, 119, 6, 0.25); }
+[data-theme="light"] .tag-red { background: rgba(220, 38, 38, 0.08); color: #b91c1c; border-color: rgba(220, 38, 38, 0.25); }
+[data-theme="light"] .modal-backdrop { background: rgba(20, 40, 30, 0.35); }
+[data-theme="light"] .btn-primary { color: #ffffff; box-shadow: 0 5px 16px rgba(5, 150, 105, 0.25); }
+[data-theme="light"] .clover-field {
+    background-image:
+        radial-gradient(ellipse 70% 45% at 50% -10%, rgba(5, 150, 105, 0.08), transparent 65%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='10' y='30' font-size='26' fill='rgba(5,150,105,0.05)'%3E%E2%98%98%3C/text%3E%3Ctext x='70' y='90' font-size='20' fill='rgba(101,163,13,0.045)'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
+}
+/* Тёмные фрагменты разметки, заданные Tailwind-классами вне токенов */
+[data-theme="light"] .bg-black\/30 { background: rgba(6, 78, 59, 0.06); }
+[data-theme="light"] .browser-url { background: var(--surface-2); }
+/* Tailwind-цвета текста, захардкоженные в разметке под тёмную тему */
+[data-theme="light"] .text-white { color: var(--text); }
+[data-theme="light"] [class*="text-emerald-100"] { color: rgba(18, 32, 25, 0.55); }
+[data-theme="light"] [class*="text-emerald-200"] { color: rgba(18, 32, 25, 0.5); }
+[data-theme="light"] [class*="text-emerald-300"]:not(.tag) { color: #047857; }
+[data-theme="light"] [class*="text-emerald-400"]:not(.tag) { color: #059669; }
+[data-theme="light"] [class*="text-emerald-50"] { color: rgba(18, 32, 25, 0.8); }
+[data-theme="light"] .text-rose-300, [data-theme="light"] .text-rose-400 { color: #dc2626; }
+[data-theme="light"] .text-lime-300 { color: #65a30d; }
+[data-theme="light"] .text-amber-400, [data-theme="light"] .text-amber-300 { color: #b45309; }
+[data-theme="light"] .bg-rose-500\/5 { background: rgba(220, 38, 38, 0.06); }
+[data-theme="light"] .border-emerald-300\/10, [data-theme="light"] [class*="border-emerald-300"] { border-color: rgba(6, 78, 59, 0.12); }
+[data-theme="light"] .text-gray-400, [data-theme="light"] .text-gray-500 { color: rgba(18, 32, 25, 0.5); }
+
+/* ─── Переключатель темы (плавающая кнопка) ─────────────────────────────── */
+.theme-toggle {
+    position: fixed;
+    right: 18px;
+    top: 18px;
+    z-index: 150;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.14s, border-color 0.14s, background 0.14s;
+    box-shadow: var(--shadow-soft);
+}
+.theme-toggle:hover { color: var(--emerald); border-color: var(--emerald); }
+@media (max-width: 900px) { .theme-toggle { top: auto; bottom: 16px; right: 16px; } }
