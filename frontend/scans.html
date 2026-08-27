@@ -94,46 +94,6 @@
                         </table>
                     </div>
                 </div>
-
-                <!-- Турнирный режим -->
-                <div class="panel mt-5">
-                    <div class="px-5 py-4 border-b border-emerald-300/10">
-                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
-                            <i class="ph ph-trophy text-emerald-300"></i>
-                            Турнирное событие
-                        </h2>
-                        <p class="text-emerald-100/40 text-xs mt-1">Пакет ссылок для всех участников + публичная страница с живым статусом «кто прошёл проверку».</p>
-                    </div>
-                    <div class="p-5">
-                        <div class="flex gap-3 flex-wrap items-center">
-                            <input type="text" id="eventName" placeholder="Название: турнир 5x5, квалификация…" class="flex-1 min-w-[220px]">
-                            <input type="number" id="eventCount" min="2" max="50" value="10" title="Число участников" class="w-24">
-                            <button onclick="createEvent()" class="btn btn-primary"><i class="ph ph-trophy"></i> Создать событие</button>
-                        </div>
-                        <div id="eventResult" class="empty:hidden mt-4"></div>
-                        <div id="eventsList" class="mt-4"></div>
-                    </div>
-                </div>
-
-                <!-- Регулярные проверки -->
-                <div class="panel mt-5">
-                    <div class="px-5 py-4 border-b border-emerald-300/10">
-                        <h2 class="text-[15px] font-semibold text-white flex items-center gap-2">
-                            <i class="ph ph-arrows-clockwise text-emerald-300"></i>
-                            Регулярные проверки
-                        </h2>
-                        <p class="text-emerald-100/40 text-xs mt-1">Игроки, обязанные проходить проверку раз в N дней. Просроченные подсвечиваются.</p>
-                    </div>
-                    <div class="p-5">
-                        <div class="flex gap-3 flex-wrap items-center mb-4">
-                            <input type="text" id="wlSteamId" placeholder="SteamID64 (7656…)" class="mono text-xs flex-1 min-w-[200px]">
-                            <input type="text" id="wlName" placeholder="Ник" class="w-40">
-                            <input type="number" id="wlDays" min="1" max="90" value="7" title="Интервал в днях" class="w-24">
-                            <button onclick="addWatch()" class="btn btn-secondary"><i class="ph ph-plus"></i> Добавить</button>
-                        </div>
-                        <div id="watchBody"></div>
-                    </div>
-                </div>
             </div>
 
             <!-- Scans -->
@@ -228,16 +188,6 @@
 
     <div id="toast"></div>
 
-    <!-- QR-модалка для ссылок игрокам -->
-    <div id="qrModal" class="hidden modal-backdrop" onclick="if(event.target===this)closeQr()">
-        <div class="modal-card p-6 flex flex-col items-center gap-3">
-            <div id="qrBox" class="bg-white p-3 rounded-lg"></div>
-            <p class="mono text-xs text-emerald-100/50 break-all max-w-xs text-center" id="qrUrl"></p>
-            <button class="btn btn-ghost btn-sm" onclick="closeQr()"><i class="ph ph-x"></i> Закрыть</button>
-        </div>
-    </div>
-
-    <script src="/vendor/qrcode.js"></script>
     <script src="/js/session.js"></script>
     <script src="/js/ui.js"></script>
     <script>
@@ -298,8 +248,6 @@
                 }
 
                 loadLinks();
-                loadEvents();
-                loadWatchlist();
             } catch (e) {
                 window.location.href = '/auth?next=/scans';
             }
@@ -324,7 +272,6 @@
                                 <span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword)}')">${esc(l.playerPassword)}</span>
                                 <span class="mono text-xs text-emerald-100/60 flex-1 min-w-[200px] truncate">${esc(l.playerUrl)}</span>
                                 <button class="btn btn-secondary btn-sm" onclick="copyText('${l.playerUrl}')"><i class="ph ph-copy"></i> Ссылка</button>
-                                <button class="btn btn-ghost btn-sm" onclick="showQr('${l.playerUrl}')" title="QR-код"><i class="ph ph-qr-code"></i></button>
                             </div>`).join('')}
                         </div>
                     </div>`;
@@ -435,111 +382,6 @@
         function copyText(text) {
             navigator.clipboard.writeText(text).then(() => toast('Скопировано в буфер')).catch(() => {});
         }
-
-        // QR-код страницы игрока — удобно показать игроку с экрана.
-        function showQr(url) {
-            const box = document.getElementById('qrBox');
-            box.innerHTML = '';
-            const qr = qrcode(0, 'M');
-            qr.addData(url);
-            qr.make();
-            box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-            document.getElementById('qrUrl').textContent = url;
-            document.getElementById('qrModal').classList.remove('hidden');
-        }
-        function closeQr() { document.getElementById('qrModal').classList.add('hidden'); }
-
-        // ─── Турнирный режим ──────────────────────────────────────────────
-        async function createEvent() {
-            const name = document.getElementById('eventName').value.trim();
-            if (!name) { toast('Введите название события', 'error'); return; }
-            const count = Math.min(Math.max(2, parseInt(document.getElementById('eventCount').value, 10) || 10), 50);
-            const res = await fetch('/api/scans/events', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name, count }) });
-            if (!res.ok) { toast('Ошибка создания события', 'error'); return; }
-            const data = await res.json();
-            document.getElementById('eventResult').innerHTML = `
-                <div class="panel-2 p-4">
-                    <p class="text-white font-semibold mb-2 flex items-center gap-2"><i class="ph ph-trophy text-emerald-300"></i>${esc(data.event.name)}</p>
-                    <p class="text-xs text-emerald-100/40 mb-3">Публичная страница статуса:</p>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <input type="text" value="${esc(data.eventUrl)}" readonly class="flex-1 mono text-xs bg-black/30 cursor-pointer min-w-[200px]" onclick="this.select()">
-                        <button class="btn btn-secondary btn-sm" onclick="copyText('${data.eventUrl}')"><i class="ph ph-copy"></i></button>
-                        <button class="btn btn-ghost btn-sm" onclick="showQr('${data.eventUrl}')" title="QR"><i class="ph ph-qr-code"></i></button>
-                        <a class="btn btn-ghost btn-sm" href="/event/${data.event.id}" target="_blank" rel="noopener"><i class="ph ph-arrow-square-out"></i></a>
-                    </div>
-                    <p class="text-xs text-emerald-100/40 mt-3 mb-2">Ссылки участникам (${data.links.length}):</p>
-                    <div class="space-y-2">${data.links.map((l, i) => `
-                        <div class="flex items-center gap-3 flex-wrap">
-                            <span class="mono text-xs text-emerald-100/40 w-8">#${i + 1}</span>
-                            <span class="mono text-amber-400 text-xs font-bold tracking-wider copy-cell" title="Скопировать пароль" onclick="copyText('${esc(l.playerPassword)}')">${esc(l.playerPassword)}</span>
-                            <span class="mono text-xs text-emerald-100/60 flex-1 min-w-[180px] truncate">${esc(l.playerUrl)}</span>
-                            <button class="btn btn-secondary btn-sm" onclick="copyText('${l.playerUrl}')"><i class="ph ph-copy"></i></button>
-                        </div>`).join('')}
-                    </div>
-                </div>`;
-            loadLinks();
-            loadEvents();
-            toast('Событие создано');
-        }
-
-        async function loadEvents() {
-            const res = await fetch('/api/scans/events', { headers: authHeaders() });
-            if (!res.ok) return;
-            const data = await res.json();
-            const box = document.getElementById('eventsList');
-            if (!data.events || !data.events.length) { box.innerHTML = ''; return; }
-            box.innerHTML = '<p class="text-xs text-emerald-100/40 uppercase tracking-wider mb-2">Прошлые события</p>' +
-                data.events.map(e => `
-                    <div class="flex items-center gap-3 py-2 border-b border-emerald-300/10">
-                        <i class="ph ph-trophy text-emerald-100/40"></i>
-                        <span class="text-sm text-white font-semibold">${esc(e.name)}</span>
-                        <span class="text-xs text-emerald-100/40">${fmtDate(e.createdAt)}</span>
-                        <a class="btn btn-ghost btn-sm ml-auto" href="/event/${e.id}" target="_blank" rel="noopener"><i class="ph ph-arrow-square-out"></i> Страница</a>
-                        <button class="btn btn-ghost btn-sm" onclick="copyText(location.origin + '/event/${e.id}')" title="Копировать ссылку"><i class="ph ph-copy"></i></button>
-                    </div>`).join('');
-        }
-
-        // ─── Регулярные проверки (watchlist) ──────────────────────────────
-        let WATCH = [];
-        async function loadWatchlist() {
-            const res = await fetch('/api/scans/watchlist', { headers: authHeaders() });
-            if (!res.ok) return;
-            const data = await res.json();
-            WATCH = data.watchlist || [];
-            renderWatchlist();
-        }
-        function renderWatchlist() {
-            const box = document.getElementById('watchBody');
-            if (!WATCH.length) { box.innerHTML = '<div class="empty-state"><i class="ph ph-user-clock"></i>Список пуст — добавьте первого игрока</div>'; return; }
-            box.innerHTML = WATCH.map((w, i) => {
-                const last = w.lastScan ? fmtDate(w.lastScan.timestamp) : 'никогда';
-                const badge = w.overdue ? '<span class="tag tag-red">просрочена</span>' : '<span class="tag tag-green">в порядке</span>';
-                const vtag = w.lastScan && w.lastScan.verdict ? ` <span class="tag ${w.lastScan.verdict.level === 'clean' ? 'tag-green' : (w.lastScan.verdict.level === 'flagged' ? 'tag-red' : 'tag-amber')}">${w.lastScan.verdict.level}</span>` : '';
-                return `<div class="flex items-center gap-3 py-2 border-b border-emerald-300/10 ${w.overdue ? 'bg-rose-500/5' : ''}">
-                    <span class="mono text-xs">${esc(w.steamId)}</span>
-                    <span class="text-sm text-white">${esc(w.name || '')}</span>${vtag}
-                    <span class="text-xs text-emerald-100/40 ml-auto">раз в ${w.intervalDays} дн. · последняя: ${last}</span>
-                    ${badge}
-                    <button class="btn btn-danger btn-icon btn-sm" title="Убрать" onclick="removeWatch(${i})"><i class="ph ph-x"></i></button>
-                </div>`;
-            }).join('');
-        }
-        async function saveWatchlist() {
-            const res = await fetch('/api/scans/watchlist', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ watchlist: WATCH }) });
-            if (!res.ok) { toast('Ошибка сохранения', 'error'); return; }
-            const data = await res.json();
-            WATCH = data.watchlist || [];
-            renderWatchlist();
-        }
-        function addWatch() {
-            const steamId = document.getElementById('wlSteamId').value.trim();
-            if (!/^\d{10,20}$/.test(steamId)) { toast('SteamID64: 10-20 цифр', 'error'); return; }
-            WATCH.push({ steamId, name: document.getElementById('wlName').value.trim(), intervalDays: parseInt(document.getElementById('wlDays').value, 10) || 7 });
-            document.getElementById('wlSteamId').value = '';
-            document.getElementById('wlName').value = '';
-            saveWatchlist().then(() => toast('Добавлено'));
-        }
-        function removeWatch(i) { WATCH.splice(i, 1); saveWatchlist(); }
 
         function copyLinkCmd(linkId, kind) {
             const entry = (window.__linkCmds || {})[linkId];
